@@ -5,8 +5,10 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -108,6 +110,169 @@ namespace CodeBuddyBookmarks
         }
     }
 
+    // ---------------- 找 IDE 安装位置 ----------------
+    internal static class IdeLocator
+    {
+        public static string Locate(string[] candidates)
+        {
+            foreach (string p in candidates)
+            {
+                try { if (!string.IsNullOrEmpty(p) && File.Exists(p)) return p; }
+                catch { }
+            }
+
+            string exeName = "app.exe";
+            if (candidates != null && candidates.Length > 0)
+            {
+                string n = Path.GetFileName(candidates[0]);
+                if (!string.IsNullOrEmpty(n)) exeName = n;
+            }
+
+            string hit = FromAppPaths(exeName);
+            if (hit != null) return hit;
+
+            hit = FromUninstall(exeName);
+            if (hit != null) return hit;
+
+            return FromStartMenu(exeName);
+        }
+
+        // 注册表 App Paths：正规安装包基本都会写这里
+        private static string FromAppPaths(string exeName)
+        {
+            string[] subs = new string[]
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\" + exeName,
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\" + exeName
+            };
+            RegistryKey[] roots = new RegistryKey[] { Registry.LocalMachine, Registry.CurrentUser };
+
+            foreach (RegistryKey root in roots)
+            {
+                foreach (string sub in subs)
+                {
+                    try
+                    {
+                        using (RegistryKey k = root.OpenSubKey(sub))
+                        {
+                            if (k == null) continue;
+                            string v = k.GetValue(null) as string;
+                            if (string.IsNullOrEmpty(v)) continue;
+                            v = v.Trim('"');
+                            if (File.Exists(v)) return v;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            return null;
+        }
+
+        // 卸载信息里的 InstallLocation / DisplayIcon
+        private static string FromUninstall(string exeName)
+        {
+            string stem = Path.GetFileNameWithoutExtension(exeName);
+            string[] subs = new string[]
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+            };
+            RegistryKey[] roots = new RegistryKey[] { Registry.LocalMachine, Registry.CurrentUser };
+
+            foreach (RegistryKey root in roots)
+            {
+                foreach (string sub in subs)
+                {
+                    try
+                    {
+                        using (RegistryKey k = root.OpenSubKey(sub))
+                        {
+                            if (k == null) continue;
+                            foreach (string name in k.GetSubKeyNames())
+                            {
+                                try
+                                {
+                                    using (RegistryKey app = k.OpenSubKey(name))
+                                    {
+                                        if (app == null) continue;
+                                        string dn = app.GetValue("DisplayName") as string;
+                                        if (string.IsNullOrEmpty(dn) || dn.IndexOf(stem, StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                                        string loc = app.GetValue("InstallLocation") as string;
+                                        if (!string.IsNullOrEmpty(loc))
+                                        {
+                                            string cand = Path.Combine(loc.Trim('"'), exeName);
+                                            if (File.Exists(cand)) return cand;
+                                        }
+
+                                        string icon = app.GetValue("DisplayIcon") as string;
+                                        if (!string.IsNullOrEmpty(icon))
+                                        {
+                                            icon = icon.Trim('"');
+                                            int comma = icon.LastIndexOf(',');
+                                            if (comma > 0) icon = icon.Substring(0, comma).Trim('"');
+                                            if (File.Exists(icon) &&
+                                                string.Equals(Path.GetFileName(icon), exeName, StringComparison.OrdinalIgnoreCase))
+                                                return icon;
+                                        }
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            return null;
+        }
+
+        // 开始菜单快捷方式（绿色版/自定义安装目录时最后兜底）
+        private static string FromStartMenu(string exeName)
+        {
+            string[] roots = new string[]
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
+                Environment.GetFolderPath(Environment.SpecialFolder.StartMenu)
+            };
+
+            foreach (string root in roots)
+            {
+                try
+                {
+                    string dir = Path.Combine(root, "Programs");
+                    if (!Directory.Exists(dir)) continue;
+                    string[] links = Directory.GetFiles(dir, "*.lnk", SearchOption.AllDirectories);
+                    foreach (string lnk in links)
+                    {
+                        string target = ResolveShortcut(lnk);
+                        if (string.IsNullOrEmpty(target) || !File.Exists(target)) continue;
+                        if (string.Equals(Path.GetFileName(target), exeName, StringComparison.OrdinalIgnoreCase))
+                            return target;
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static string ResolveShortcut(string lnkPath)
+        {
+            try
+            {
+                Type t = Type.GetTypeFromProgID("WScript.Shell");
+                if (t == null) return null;
+                object shell = Activator.CreateInstance(t);
+                object sc = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell,
+                    new object[] { lnkPath });
+                if (sc == null) return null;
+                object target = sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null);
+                return target as string;
+            }
+            catch { return null; }
+        }
+    }
+
     // ---------------- IDE 产品 ----------------
     internal class Product
     {
@@ -115,6 +280,11 @@ namespace CodeBuddyBookmarks
         public string Name;
         public string UserData;
         public string[] ExeCandidates;
+        public string[] ProcessNames;
+
+        private string cachedExe;
+        private bool resolved;
+        private DateTime resolvedAt = DateTime.MinValue;
 
         public string StoragePath
         {
@@ -125,12 +295,12 @@ namespace CodeBuddyBookmarks
         {
             get
             {
-                foreach (string p in ExeCandidates)
-                {
-                    try { if (File.Exists(p)) return p; }
-                    catch { }
-                }
-                return null;
+                // 结果缓存 30 秒，避免每 5 秒重复扫注册表/开始菜单
+                if (resolved && (DateTime.UtcNow - resolvedAt).TotalSeconds < 30) return cachedExe;
+                cachedExe = IdeLocator.Locate(ExeCandidates);
+                resolved = true;
+                resolvedAt = DateTime.UtcNow;
+                return cachedExe;
             }
         }
 
@@ -139,9 +309,23 @@ namespace CodeBuddyBookmarks
             get
             {
                 string exe = Exe;
-                if (exe == null) return false;
-                try { return Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exe)).Length > 0; }
-                catch { return false; }
+                if (exe != null)
+                {
+                    try
+                    {
+                        if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exe)).Length > 0) return true;
+                    }
+                    catch { }
+                }
+
+                string[] names = ProcessNames;
+                if (names == null || names.Length == 0) names = new string[] { Name };
+                foreach (string n in names)
+                {
+                    try { if (!string.IsNullOrEmpty(n) && Process.GetProcessesByName(n).Length > 0) return true; }
+                    catch { }
+                }
+                return false;
             }
         }
     }
@@ -261,6 +445,7 @@ namespace CodeBuddyBookmarks
         private Label lblEmptyTitle, lblEmptyHint;
 
         private bool busy = false;
+        private Icon appIcon;
 
         private int hoverIndex = -1;
         private readonly Font listFont = new Font("Microsoft YaHei UI", 9.5F);
@@ -289,6 +474,11 @@ namespace CodeBuddyBookmarks
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.White;
             DoubleBuffered = true;
+
+            // 窗口标题栏图标：直接用 exe 里嵌入的图标
+            try { appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+            catch { }
+            if (appIcon != null) Icon = appIcon;
 
             BuildUi();
             Size wa = Screen.PrimaryScreen.WorkingArea.Size;
@@ -322,12 +512,8 @@ namespace CodeBuddyBookmarks
         // ==================== 托盘图标 ====================
         private void InitTray()
         {
-            Icon ico = null;
-            try { ico = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
-            catch { }
-
             tray = new NotifyIcon();
-            tray.Icon = ico != null ? ico : SystemIcons.Application;
+            tray.Icon = appIcon != null ? appIcon : SystemIcons.Application;
             tray.Text = "CodeBuddy 窗口书签";
             tray.Visible = true;
             tray.DoubleClick += delegate { ShowFromTray(); };
@@ -359,9 +545,10 @@ namespace CodeBuddyBookmarks
             trayMenu.Items.Add(new ToolStripSeparator());
 
             // 同步一次"已打开"状态
+            List<Bookmark> live = new List<Bookmark>();
             try
             {
-                List<Bookmark> live = CollectLive();
+                live = CollectLive();
                 List<string> openUris = new List<string>();
                 foreach (Bookmark l in live) openUris.Add(l.uri.ToLower());
                 foreach (Bookmark b in store.items) b.OpenNow = openUris.Contains(b.uri.ToLower());
@@ -394,6 +581,48 @@ namespace CodeBuddyBookmarks
                 }
             }
 
+            // ---- 未加入书签的窗口 ----
+            List<Bookmark> extras = new List<Bookmark>();
+            List<string> knownUris = new List<string>();
+            foreach (Bookmark b in store.items) knownUris.Add(b.uri.ToLower());
+            foreach (Bookmark l in live)
+            {
+                string u = l.uri.ToLower();
+                if (knownUris.Contains(u)) continue;
+                bool dup = false;
+                foreach (Bookmark e in extras)
+                    if (string.Equals(e.uri, l.uri, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
+                if (!dup) extras.Add(l);
+            }
+
+            if (extras.Count > 0)
+            {
+                trayMenu.Items.Add(new ToolStripSeparator());
+                ToolStripMenuItem head = new ToolStripMenuItem("未加入书签的窗口（" + extras.Count + "）");
+                head.Enabled = false;
+                trayMenu.Items.Add(head);
+
+                int shownX = 0;
+                foreach (Bookmark b in extras)
+                {
+                    if (shownX >= 10)
+                    {
+                        trayMenu.Items.Add("更多…（打开主界面查看）", null, delegate { ShowFromTray(); });
+                        break;
+                    }
+                    Bookmark bx = b;
+                    ToolStripMenuItem item = new ToolStripMenuItem("· " + (bx.name == null ? "(未命名)" : bx.name));
+                    string localX = ToLocalPath(bx.uri);
+                    item.ToolTipText = (localX != null ? localX : Uri.UnescapeDataString(bx.uri)) + "\n点击置顶这个窗口";
+                    item.Click += delegate { ActivateBookmark(bx); };
+                    trayMenu.Items.Add(item);
+                    shownX++;
+                }
+
+                List<Bookmark> toAdd = extras;
+                trayMenu.Items.Add("把以上窗口加入书签", null, delegate { AddBookmarks(toAdd); });
+            }
+
             trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("全部打开", null, delegate { CheckAll(true); OpenChecked(false); });
             trayMenu.Items.Add("退出", null, delegate
@@ -401,6 +630,18 @@ namespace CodeBuddyBookmarks
                 exiting = true;
                 Close();
             });
+        }
+
+        // 把一批窗口加进书签（托盘菜单用）
+        private void AddBookmarks(List<Bookmark> list)
+        {
+            if (list == null || list.Count == 0) return;
+            int added = 0;
+            foreach (Bookmark b in list)
+                if (AddUnique(b)) added++;
+            if (added > 0) SaveStore();
+            RefreshRows();
+            status.Text = added > 0 ? ("已加入 " + added + " 个书签") : "这些窗口已经在书签里了";
         }
 
         // 托盘里点某个书签：已打开就置顶，没打开就开新窗口
@@ -1076,6 +1317,7 @@ namespace CodeBuddyBookmarks
                 Path.Combine(pf, @"CodeBuddy CN\CodeBuddy CN.exe"),
                 Path.Combine(pf86, @"CodeBuddy CN\CodeBuddy CN.exe")
             };
+            cb.ProcessNames = new string[] { "CodeBuddy CN", "CodeBuddy" };
             ps.Add(cb);
 
             Product wb = new Product();
@@ -1087,6 +1329,7 @@ namespace CodeBuddyBookmarks
                 Path.Combine(local, @"Programs\WorkBuddy\WorkBuddy.exe"),
                 Path.Combine(pf, @"WorkBuddy\WorkBuddy.exe")
             };
+            wb.ProcessNames = new string[] { "WorkBuddy" };
             ps.Add(wb);
 
             Product trae = new Product();
@@ -1098,6 +1341,7 @@ namespace CodeBuddyBookmarks
                 Path.Combine(local, @"Programs\Trae CN\Trae CN.exe"),
                 Path.Combine(pf, @"Trae CN\Trae CN.exe")
             };
+            trae.ProcessNames = new string[] { "Trae CN", "Trae" };
             ps.Add(trae);
 
             Product code = new Product();
@@ -1109,6 +1353,7 @@ namespace CodeBuddyBookmarks
                 Path.Combine(local, @"Programs\Microsoft VS Code\Code.exe"),
                 Path.Combine(pf, @"Microsoft VS Code\Code.exe")
             };
+            code.ProcessNames = new string[] { "Code" };
             ps.Add(code);
 
             return ps;

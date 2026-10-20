@@ -4,11 +4,13 @@ snapshots/
 *.bak
 *.bak2
 
-# ---- 构建产物 ----
+# ---- 构建产物 / 发布包 ----
 CodeBuddyWindowMaster.exe
 *.exe
 bin/
 obj/
+dist/
+*.zip
 
 # ---- 系统 / 编辑器 ----
 Thumbs.db
