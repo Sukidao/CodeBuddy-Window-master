@@ -1,0 +1,17 @@
+# ---- 本机用户数据（不要提交）----
+bookmarks.json
+snapshots/
+*.bak
+*.bak2
+
+# ---- 构建产物 ----
+CodeBuddyWindowMaster.exe
+*.exe
+bin/
+obj/
+
+# ---- 系统 / 编辑器 ----
+Thumbs.db
+desktop.ini
+.vs/
+*.user
