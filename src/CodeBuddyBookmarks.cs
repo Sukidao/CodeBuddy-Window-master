@@ -612,8 +612,7 @@ namespace CodeBuddyBookmarks
                     }
                     Bookmark bx = b;
                     ToolStripMenuItem item = new ToolStripMenuItem("· " + (bx.name == null ? "(未命名)" : bx.name));
-                    string localX = ToLocalPath(bx.uri);
-                    item.ToolTipText = (localX != null ? localX : Uri.UnescapeDataString(bx.uri)) + "\n点击置顶这个窗口";
+                    item.ToolTipText = PathText(bx) + "\n点击置顶这个窗口";
                     item.Click += delegate { ActivateBookmark(bx); };
                     trayMenu.Items.Add(item);
                     shownX++;
@@ -1203,8 +1202,7 @@ namespace CodeBuddyBookmarks
 
             if (e.ColumnIndex == 1)
             {
-                string local = ToLocalPath(b.uri);
-                string text = local != null ? local : "远程  " + Uri.UnescapeDataString(b.uri);
+                string text = PathText(b);
                 TextRenderer.DrawText(g, text, listFont, r,
                     b.Missing ? Theme.Danger : Color.FromArgb(106, 114, 130),
                     TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
@@ -1213,8 +1211,7 @@ namespace CodeBuddyBookmarks
 
             if (e.ColumnIndex == 2)
             {
-                string type = b.kind == "workspace" ? "工作区" : (ToLocalPath(b.uri) == null ? "远程" : "文件夹");
-                TextRenderer.DrawText(g, type, listFont, r, Color.FromArgb(134, 141, 156),
+                TextRenderer.DrawText(g, TypeText(b), listFont, r, Color.FromArgb(134, 141, 156),
                     TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                 return;
             }
@@ -1384,6 +1381,86 @@ namespace CodeBuddyBookmarks
                 return rest;
             }
             catch { return null; }
+        }
+
+        // vscode-remote://codebuddy-remote-ssh+win/e:/Android/xx
+        //   ->  [SSH: win]  /e:/Android/xx
+        private static string RemoteDisplay(Bookmark b)
+        {
+            string rest;
+            string auth = b == null ? null : b.remoteAuthority;
+            string uri = b == null || b.uri == null ? "" : b.uri;
+            try
+            {
+                int idx = uri.IndexOf("://", StringComparison.Ordinal);
+                if (idx > 0)
+                {
+                    string after = uri.Substring(idx + 3);
+                    int slash = after.IndexOf('/');
+                    if (slash > 0)
+                    {
+                        string a = Uri.UnescapeDataString(after.Substring(0, slash));
+                        if (string.IsNullOrEmpty(auth)) auth = a;
+                        rest = Uri.UnescapeDataString(after.Substring(slash));
+                    }
+                    else
+                    {
+                        rest = Uri.UnescapeDataString(after);
+                    }
+                }
+                else
+                {
+                    rest = Uri.UnescapeDataString(uri);
+                }
+            }
+            catch { rest = uri; }
+
+            string label = RemoteLabel(auth);
+            return label == null ? "远程  " + rest : "[" + label + "]  " + rest;
+        }
+
+        // codebuddy-remote-ssh+win -> SSH: win
+        private static string RemoteLabel(string auth)
+        {
+            if (string.IsNullOrEmpty(auth)) return null;
+            string a = auth;
+            if (a.StartsWith("codebuddy-remote-", StringComparison.OrdinalIgnoreCase))
+                a = a.Substring("codebuddy-remote-".Length);
+
+            string kind = a;
+            string target = null;
+            int plus = a.IndexOf('+');
+            if (plus > 0)
+            {
+                kind = a.Substring(0, plus);
+                target = a.Substring(plus + 1);
+            }
+
+            if (kind.Equals("ssh", StringComparison.OrdinalIgnoreCase))
+                return target == null ? "SSH" : "SSH: " + target;
+            if (kind.Equals("wsl", StringComparison.OrdinalIgnoreCase))
+                return target == null ? "WSL" : "WSL: " + target;
+            if (kind.IndexOf("container", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "容器";
+            return target == null ? kind : kind + ": " + target;
+        }
+
+        private static string PathText(Bookmark b)
+        {
+            string local = ToLocalPath(b.uri);
+            return local != null ? local : RemoteDisplay(b);
+        }
+
+        private static string TypeText(Bookmark b)
+        {
+            if (ToLocalPath(b.uri) != null)
+                return b.kind == "workspace" ? "工作区" : "文件夹";
+
+            string a = b.remoteAuthority ?? "";
+            if (a.IndexOf("ssh", StringComparison.OrdinalIgnoreCase) >= 0) return "SSH";
+            if (a.IndexOf("wsl", StringComparison.OrdinalIgnoreCase) >= 0) return "WSL";
+            if (a.IndexOf("container", StringComparison.OrdinalIgnoreCase) >= 0) return "容器";
+            return "远程";
         }
 
         private static string UriFromPath(string path)
@@ -1587,8 +1664,8 @@ namespace CodeBuddyBookmarks
                 if (!exists) missing++;
 
                 ListViewItem row = new ListViewItem(b.name == null ? "" : b.name, 0);
-                row.SubItems.Add(local != null ? local : "远程  " + Uri.UnescapeDataString(b.uri));
-                row.SubItems.Add(b.kind == "workspace" ? "工作区" : (local == null ? "远程" : "文件夹"));
+                row.SubItems.Add(PathText(b));
+                row.SubItems.Add(TypeText(b));
                 row.SubItems.Add(!exists ? "路径不存在" : (b.OpenNow ? "已打开" : "未打开"));
                 row.Tag = b;
 
@@ -1666,10 +1743,9 @@ namespace CodeBuddyBookmarks
             listExtra.Items.Clear();
             foreach (Bookmark b in extras)
             {
-                string local = ToLocalPath(b.uri);
                 ListViewItem row = new ListViewItem(b.name == null ? "" : b.name, 0);
-                row.SubItems.Add(local != null ? local : "远程  " + Uri.UnescapeDataString(b.uri));
-                row.SubItems.Add(local == null ? "远程" : (b.kind == "workspace" ? "工作区" : "文件夹"));
+                row.SubItems.Add(PathText(b));
+                row.SubItems.Add(TypeText(b));
                 row.Tag = b;
                 listExtra.Items.Add(row);
             }
