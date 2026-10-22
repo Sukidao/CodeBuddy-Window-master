@@ -1,5 +1,6 @@
 # ---- 本机用户数据（不要提交）----
 bookmarks.json
+ui-state.json
 snapshots/
 *.bak
 *.bak2

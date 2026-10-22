@@ -344,6 +344,16 @@ namespace CodeBuddyBookmarks
         public bool Selected = true;
     }
 
+    // 记住窗口的位置 / 大小
+    internal class UiState
+    {
+        public int x;
+        public int y;
+        public int width;
+        public int height;
+        public bool maximized;
+    }
+
     internal class BookmarkFile
     {
         public int version = 1;
@@ -419,6 +429,7 @@ namespace CodeBuddyBookmarks
         private readonly string workDir;
         private readonly string storePath;
         private readonly string snapshotPath;
+        private readonly string uiStatePath;
 
         private BookmarkFile store = new BookmarkFile();
         private List<Product> products;
@@ -458,13 +469,18 @@ namespace CodeBuddyBookmarks
         private ContextMenuStrip trayMenu;
         private bool trayHintShown = false;
         private bool exiting = false;
+        private bool startHidden = false;
 
         public MainForm()
         {
             workDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
             storePath = Path.Combine(workDir, "bookmarks.json");
             snapshotPath = Path.Combine(workDir, @"snapshots\windows-latest.json");
+            uiStatePath = Path.Combine(workDir, "ui-state.json");
             products = BuildProducts();
+
+            foreach (string arg in Environment.GetCommandLineArgs())
+                if (string.Equals(arg, "--tray", StringComparison.OrdinalIgnoreCase)) startHidden = true;
 
             Text = "CodeBuddy 窗口书签";
             AutoScaleDimensions = new SizeF(96F, 96F);
@@ -481,16 +497,81 @@ namespace CodeBuddyBookmarks
             if (appIcon != null) Icon = appIcon;
 
             BuildUi();
-            Size wa = Screen.PrimaryScreen.WorkingArea.Size;
-            ClientSize = new Size(Math.Min(1040, wa.Width - 60), Math.Min(640, wa.Height - 60));
+            ApplyUiState();
             LayoutColumns();
             LayoutToolbar();
+
+            // 拖完窗口就把大小记下来，避免异常退出时丢
+            ResizeEnd += delegate { if (!startHidden) SaveUiState(); };
 
             LoadStore();
             RefreshRows();
 
             InitTimer();
             InitTray();
+        }
+
+        // ==================== 窗口大小 / 位置记忆 ====================
+        private void ApplyUiState()
+        {
+            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            UiState st = null;
+            try
+            {
+                if (File.Exists(uiStatePath))
+                {
+                    string raw = File.ReadAllText(uiStatePath, Encoding.UTF8);
+                    if (raw.Trim().Length > 0)
+                    {
+                        JavaScriptSerializer json = new JavaScriptSerializer();
+                        st = json.Deserialize<UiState>(raw);
+                    }
+                }
+            }
+            catch { }
+
+            if (st != null && st.width >= 500 && st.height >= 380)
+            {
+                Rectangle r = new Rectangle(st.x, st.y, st.width, st.height);
+                bool onScreen = false;
+                foreach (Screen s in Screen.AllScreens)
+                {
+                    Rectangle part = Rectangle.Intersect(s.WorkingArea, r);
+                    if (part.Width >= 120 && part.Height >= 80) { onScreen = true; break; }
+                }
+
+                if (onScreen)
+                {
+                    StartPosition = FormStartPosition.Manual;
+                    Bounds = r;   // 恢复上次的位置和大小
+                    if (st.maximized) WindowState = FormWindowState.Maximized;
+                    return;
+                }
+            }
+
+            // 没有记录（或记录的位置已经不在屏幕上）：用默认尺寸
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(Math.Min(1040, wa.Width - 60), Math.Min(735, wa.Height - 60));
+        }
+
+        private void SaveUiState()
+        {
+            try
+            {
+                Rectangle b = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+                if (b.Width < 300 || b.Height < 200) return;
+
+                UiState st = new UiState();
+                st.x = b.X;
+                st.y = b.Y;
+                st.width = b.Width;
+                st.height = b.Height;
+                st.maximized = WindowState == FormWindowState.Maximized;
+
+                JavaScriptSerializer json = new JavaScriptSerializer();
+                File.WriteAllText(uiStatePath, json.Serialize(st), new UTF8Encoding(false));
+            }
+            catch { }
         }
 
         // ==================== 自动刷新 ====================
@@ -624,11 +705,75 @@ namespace CodeBuddyBookmarks
 
             trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("全部打开", null, delegate { CheckAll(true); OpenChecked(false); });
+
+            ToolStripMenuItem autoItem = new ToolStripMenuItem("开机自动启动");
+            autoItem.Checked = IsAutoStartEnabled();
+            autoItem.ToolTipText = "开机后自动启动，并缩到托盘后台运行";
+            autoItem.Click += delegate { ToggleAutoStart(); };
+            trayMenu.Items.Add(autoItem);
+
             trayMenu.Items.Add("退出", null, delegate
             {
                 exiting = true;
                 Close();
             });
+        }
+
+        // ==================== 开机自动启动 ====================
+        private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string RunValueName = "CodeBuddyWindowMaster";
+
+        private static string AutoStartCommand()
+        {
+            return "\"" + Application.ExecutablePath + "\" --tray";
+        }
+
+        private static bool IsAutoStartEnabled()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKeyPath, false))
+                {
+                    if (k == null) return false;
+                    string v = k.GetValue(RunValueName) as string;
+                    if (string.IsNullOrEmpty(v)) return false;
+                    return v.IndexOf(Application.ExecutablePath, StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+            }
+            catch { return false; }
+        }
+
+        // 返回 null 表示成功，否则是错误信息
+        private static string SetAutoStart(bool on)
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
+                {
+                    if (k == null) return "打不开注册表启动项（权限不足？）";
+                    if (on) k.SetValue(RunValueName, AutoStartCommand());
+                    else k.DeleteValue(RunValueName, false);
+                }
+                return null;
+            }
+            catch (Exception ex) { return ex.Message; }
+        }
+
+        private void ToggleAutoStart()
+        {
+            bool on = !IsAutoStartEnabled();
+            string err = SetAutoStart(on);
+            if (err != null)
+            {
+                MessageBox.Show("设置开机自动启动失败：\r\n" + err, "CodeBuddy 窗口书签",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            status.Text = on ? "已开启：开机自动启动并缩到托盘" : "已关闭开机自动启动";
+            if (tray != null)
+                tray.ShowBalloonTip(1800, "CodeBuddy 窗口书签",
+                    on ? "已加入开机启动，下次开机自动在托盘运行。" : "已从开机启动中移除。",
+                    ToolTipIcon.Info);
         }
 
         // 把一批窗口加进书签（托盘菜单用）
@@ -658,12 +803,14 @@ namespace CodeBuddyBookmarks
             }
         }
 
-        private void HideToTray()
+        private void HideToTray() { HideToTray(false); }
+
+        private void HideToTray(bool silent)
         {
             if (tray == null) return;
             ShowInTaskbar = false;
             Hide();
-            if (!trayHintShown)
+            if (!trayHintShown && !silent)
             {
                 tray.ShowBalloonTip(2500, "仍在后台运行",
                     "窗口已最小化到托盘，双击图标可重新打开。\n每 5 秒自动刷新会暂停，恢复界面后继续。",
@@ -674,6 +821,7 @@ namespace CodeBuddyBookmarks
 
         private void ShowFromTray()
         {
+            startHidden = false;
             if (!Visible) Show();
             ShowInTaskbar = true;
             if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
@@ -696,6 +844,7 @@ namespace CodeBuddyBookmarks
                 // 点右上角 × ：直接退出（托盘菜单里也有"退出"）
                 exiting = true;
             }
+            SaveUiState();
             if (autoTimer != null) autoTimer.Stop();
             if (tray != null)
             {
@@ -725,10 +874,10 @@ namespace CodeBuddyBookmarks
             list.HideSelection = false;
             list.SmallImageList = il;
             list.Font = new Font("Microsoft YaHei UI", 9F);
+            list.Columns.Add("状态", 92);
             list.Columns.Add("书签", 300);
             list.Columns.Add("路径", 500);
-            list.Columns.Add("类型", 74);
-            list.Columns.Add("状态", 88);
+            list.Columns.Add("类型", 76);
             list.ItemCheck += OnItemCheck;
             list.DoubleClick += delegate { OpenChecked(true); };
             list.MouseUp += OnListMouseUp;
@@ -890,19 +1039,19 @@ namespace CodeBuddyBookmarks
             lblSummary.Text = "";
 
             lblHint = new Label();
-            lblHint.Text = "F5 刷新    Ctrl+F 搜索    双击打开";
+            lblHint.Text = "F5 刷新    Ctrl+F 搜索    F2 改名    双击打开";
             lblHint.AutoSize = false;
             lblHint.TextAlign = ContentAlignment.MiddleRight;
             lblHint.ForeColor = Color.FromArgb(122, 134, 160);
             lblHint.BackColor = Color.Transparent;
-            lblHint.Size = new Size(300, 22);
-            lblHint.Location = new Point(600, 30);
+            lblHint.Size = new Size(370, 22);
+            lblHint.Location = new Point(560, 32);
 
             header = new Panel();
             header.Dock = DockStyle.Top;
             header.Height = 86;
             header.Paint += OnHeaderPaint;
-            header.Resize += delegate { lblHint.Location = new Point(header.Width - 324, 33); };
+            header.Resize += delegate { lblHint.Location = new Point(header.Width - 394, 32); };
             header.Controls.Add(title);
             header.Controls.Add(lblSummary);
             header.Controls.Add(lblHint);
@@ -1015,10 +1164,11 @@ namespace CodeBuddyBookmarks
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Font = new Font("Microsoft YaHei UI", 9F);
             menu.Items.Add("打开这一个", null, delegate { OpenChecked(true); });
+            menu.Items.Add("重命名（F2）", null, delegate { RenameSelected(); });
+            menu.Items.Add("在资源管理器中打开", null, delegate { RevealSelected(); });
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("全选（Ctrl+A）", null, delegate { CheckAll(true); });
             menu.Items.Add("全不选", null, delegate { CheckAll(false); });
-            menu.Items.Add("重命名", null, delegate { RenameSelected(); });
-            menu.Items.Add("在资源管理器中打开", null, delegate { RevealSelected(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("删除", null, delegate { DeleteSelected(); });
             list.ContextMenuStrip = menu;
@@ -1066,6 +1216,17 @@ namespace CodeBuddyBookmarks
             LayoutExtra();
         }
 
+        // 开机自启（--tray）时不显示主窗口，只留托盘图标
+        protected override void SetVisibleCore(bool value)
+        {
+            if (startHidden)
+            {
+                value = false;
+                if (!IsHandleCreated) CreateHandle();
+            }
+            base.SetVisibleCore(value);
+        }
+
         private void OnHeaderPaint(object sender, PaintEventArgs e)
         {
             Rectangle r = new Rectangle(0, 0, header.Width, header.Height);
@@ -1103,7 +1264,7 @@ namespace CodeBuddyBookmarks
             using (Pen p = new Pen(Theme.Border))
                 g.DrawLine(p, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
 
-            int indent = e.ColumnIndex == 0 ? 32 : 12;
+            int indent = (sender == list && e.ColumnIndex == 1) ? 32 : 12;
             Rectangle r = new Rectangle(e.Bounds.X + indent, e.Bounds.Y, Math.Max(10, e.Bounds.Width - indent - 6), e.Bounds.Height);
             TextRenderer.DrawText(g, e.Header.Text, headerFont, r, Color.FromArgb(122, 131, 148),
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
@@ -1186,7 +1347,20 @@ namespace CodeBuddyBookmarks
             Color nameColor = b.Missing ? Theme.Danger
                 : (b.OpenNow ? Color.FromArgb(160, 166, 178) : Theme.TextMain);
 
+            // 第 0 列：状态胶囊
             if (e.ColumnIndex == 0)
+            {
+                if (b.Missing) DrawChip(g, e.Bounds, "路径失效", Color.FromArgb(190, 58, 58), Color.FromArgb(253, 236, 236));
+                else if (b.OpenNow) DrawChip(g, e.Bounds, "已打开", Color.FromArgb(28, 138, 78), Color.FromArgb(232, 247, 238));
+                else DrawChip(g, e.Bounds, "未打开", Color.FromArgb(110, 118, 132), Color.FromArgb(242, 244, 248));
+                return;
+            }
+
+            Rectangle r = new Rectangle(e.Bounds.X + 12, e.Bounds.Y,
+                Math.Max(10, e.Bounds.Width - 18), e.Bounds.Height);
+
+            // 第 1 列：勾选框 + 名称
+            if (e.ColumnIndex == 1)
             {
                 Rectangle box = new Rectangle(e.Bounds.X + 6, e.Bounds.Y + (e.Bounds.Height - 16) / 2, 16, 16);
                 DrawCheckBox(g, box, b.Selected);
@@ -1197,28 +1371,18 @@ namespace CodeBuddyBookmarks
                 return;
             }
 
-            Rectangle r = new Rectangle(e.Bounds.X + 12, e.Bounds.Y,
-                Math.Max(10, e.Bounds.Width - 18), e.Bounds.Height);
-
-            if (e.ColumnIndex == 1)
+            // 第 2 列：路径
+            if (e.ColumnIndex == 2)
             {
-                string text = PathText(b);
-                TextRenderer.DrawText(g, text, listFont, r,
+                TextRenderer.DrawText(g, PathText(b), listFont, r,
                     b.Missing ? Theme.Danger : Color.FromArgb(106, 114, 130),
                     TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
                 return;
             }
 
-            if (e.ColumnIndex == 2)
-            {
-                TextRenderer.DrawText(g, TypeText(b), listFont, r, Color.FromArgb(134, 141, 156),
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-                return;
-            }
-
-            if (b.Missing) DrawChip(g, e.Bounds, "路径失效", Color.FromArgb(190, 58, 58), Color.FromArgb(253, 236, 236));
-            else if (b.OpenNow) DrawChip(g, e.Bounds, "已打开", Color.FromArgb(28, 138, 78), Color.FromArgb(232, 247, 238));
-            else DrawChip(g, e.Bounds, "未打开", Color.FromArgb(110, 118, 132), Color.FromArgb(242, 244, 248));
+            // 第 3 列：类型
+            TextRenderer.DrawText(g, TypeText(b), listFont, r, Color.FromArgb(134, 141, 156),
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 
         private void LayoutEmpty()
@@ -1271,14 +1435,14 @@ namespace CodeBuddyBookmarks
             if (list.Columns.Count != 4) return;
             int w = list.ClientSize.Width;
             if (w <= 0) return;
-            int name = Math.Max(180, Math.Min(330, (int)(w * 0.28)));
-            int type = 76;
             int state = 92;
-            int path = Math.Max(160, w - name - type - state - 8);
-            list.Columns[0].Width = name;
-            list.Columns[1].Width = path;
-            list.Columns[2].Width = type;
-            list.Columns[3].Width = state;
+            int name = Math.Max(180, Math.Min(330, (int)((w - state) * 0.30)));
+            int type = 76;
+            int path = Math.Max(160, w - state - name - type - 8);
+            list.Columns[0].Width = state;
+            list.Columns[1].Width = name;
+            list.Columns[2].Width = path;
+            list.Columns[3].Width = type;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -1290,6 +1454,7 @@ namespace CodeBuddyBookmarks
             {
                 if (keyData == Keys.Delete) { DeleteSelected(); return true; }
                 if (keyData == Keys.Enter) { OpenChecked(true); return true; }
+                if (keyData == Keys.F2) { RenameSelected(); return true; }
             }
             return base.ProcessCmdKey(ref msg, keyData);
         }
@@ -1663,10 +1828,11 @@ namespace CodeBuddyBookmarks
                 b.Missing = !exists;
                 if (!exists) missing++;
 
-                ListViewItem row = new ListViewItem(b.name == null ? "" : b.name, 0);
+                string stateText = !exists ? "路径不存在" : (b.OpenNow ? "已打开" : "未打开");
+                ListViewItem row = new ListViewItem(stateText, 0);
+                row.SubItems.Add(b.name == null ? "" : b.name);
                 row.SubItems.Add(PathText(b));
                 row.SubItems.Add(TypeText(b));
-                row.SubItems.Add(!exists ? "路径不存在" : (b.OpenNow ? "已打开" : "未打开"));
                 row.Tag = b;
 
                 if (!exists) row.ForeColor = Theme.Danger;
@@ -1988,7 +2154,7 @@ namespace CodeBuddyBookmarks
                         : (b.OpenNow ? Color.FromArgb(152, 158, 170) : Theme.TextMain);
 
                     // 只有变化时才写回，避免每 5 秒整表重绘
-                    if (row.SubItems[3].Text != stateText) row.SubItems[3].Text = stateText;
+                    if (row.SubItems[0].Text != stateText) row.SubItems[0].Text = stateText;
                     if (row.ForeColor != fore) row.ForeColor = fore;
                 }
                 list.EndUpdate();
@@ -2029,7 +2195,8 @@ namespace CodeBuddyBookmarks
                 ListViewHitTestInfo h = list.HitTest(e.Location);
                 if (h.Item == null) return;
                 Rectangle rb = h.Item.Bounds;
-                Rectangle box = new Rectangle(rb.X + 6, rb.Y + (rb.Height - 16) / 2, 16, 16);
+                int nameColX = rb.X + (list.Columns.Count > 0 ? list.Columns[0].Width : 0);
+                Rectangle box = new Rectangle(nameColX + 6, rb.Y + (rb.Height - 16) / 2, 16, 16);
                 box.Inflate(5, 5);
                 if (!box.Contains(e.Location)) return;
                 Bookmark bm = h.Item.Tag as Bookmark;
