@@ -6,11 +6,13 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" set "CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
     echo [ERROR] csc.exe not found.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
-set ICON=%LOCALAPPDATA%\Programs\CodeBuddy CN\resources\app\extensions\genie\out\webviews\favicon.ico
+rem 优先用仓库内的图标，没有就退回 CodeBuddy 安装目录里的
+set ICON=%~dp0src\app.ico
+if not exist "%ICON%" set ICON=%LOCALAPPDATA%\Programs\CodeBuddy CN\resources\app\extensions\genie\out\webviews\favicon.ico
 set ICONARG=
 if exist "%ICON%" set ICONARG=/win32icon:"%ICON%"
 
@@ -24,7 +26,7 @@ if exist "%ICON%" set ICONARG=/win32icon:"%ICON%"
 if errorlevel 1 (
     echo.
     echo [FAILED] compile error
-    pause
+    if not defined CI pause
     exit /b 1
 )
 

@@ -1,6 +1,9 @@
 # ---- 本机用户数据（不要提交）----
 bookmarks.json
+bookmarks.json.bak
+bookmarks.json.tmp
 ui-state.json
+error.log
 snapshots/
 *.bak
 *.bak2

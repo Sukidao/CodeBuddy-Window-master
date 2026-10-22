@@ -5,7 +5,7 @@ cd /d "%~dp0"
 tasklist /FI "IMAGENAME eq CodeBuddyWindowMaster.exe" 2>nul | find /I "CodeBuddyWindowMaster.exe" >nul
 if not errorlevel 1 (
     echo [WARN] CodeBuddyWindowMaster.exe is running - close it first, then run this again.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -33,5 +33,5 @@ exit /b 0
 :fail
 echo.
 echo [FAILED]
-pause
+if not defined CI pause
 exit /b 1
