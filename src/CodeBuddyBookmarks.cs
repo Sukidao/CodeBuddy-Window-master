@@ -1037,7 +1037,7 @@ namespace CodeBuddyBookmarks
             if (!trayHintShown && !silent)
             {
                 tray.ShowBalloonTip(2500, "仍在后台运行",
-                    "窗口已最小化到托盘，双击图标可重新打开。\n每 5 秒自动刷新会暂停，恢复界面后继续。",
+                    "已缩到托盘，双击图标可重新打开；要彻底退出请右键托盘图标 → 退出。",
                     ToolTipIcon.Info);
                 trayHintShown = true;
             }
@@ -1063,11 +1063,16 @@ namespace CodeBuddyBookmarks
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);
+
+            // 点右上角 × / Alt+F4：缩到托盘，不退出程序；真正退出走托盘菜单里的"退出"
             if (!exiting && e.CloseReason == CloseReason.UserClosing)
             {
-                // 点右上角 × ：直接退出（托盘菜单里也有"退出"）
-                exiting = true;
+                e.Cancel = true;
+                SaveUiState();
+                HideToTray();
+                return;
             }
+
             SaveUiState();
             if (autoTimer != null) autoTimer.Stop();
             if (tray != null)
