@@ -2521,6 +2521,39 @@ namespace CodeBuddyBookmarks
         [DllImport("user32.dll")]
         private static extern bool BringWindowToTop(IntPtr hWnd);
 
+        // 启动 IDE：目标程序要求管理员权限（错误 740）时，改用 ShellExecute 让系统弹 UAC
+        private static void StartIdeProcess(string exe, string args)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(exe, args);
+                psi.UseShellExecute = false;
+                Process.Start(psi);
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                if (ex.NativeErrorCode != 740) throw;
+
+                ProcessStartInfo psi = new ProcessStartInfo(exe, args);
+                psi.UseShellExecute = true;   // 交给 Shell，会弹"是否允许此应用更改设备"
+                Process.Start(psi);
+            }
+        }
+
+        // 把系统错误翻译成用户能看懂的说明
+        private static string FriendlyError(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return message;
+            if (message.IndexOf("提升", StringComparison.Ordinal) >= 0 ||
+                message.IndexOf("elevation", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                message.IndexOf("740", StringComparison.Ordinal) >= 0)
+                return "该 IDE 以管理员身份运行，需要授权（会弹 UAC 窗口）；若点了取消，请右键本程序「以管理员身份运行」后再试";
+            if (message.IndexOf("1223", StringComparison.Ordinal) >= 0 ||
+                message.IndexOf("取消", StringComparison.Ordinal) >= 0)
+                return "已取消管理员授权";
+            return message;
+        }
+
         // 按标题 + 进程名找该项目的窗口
         private IntPtr FindWindowFor(Bookmark b)
         {
@@ -2579,14 +2612,12 @@ namespace CodeBuddyBookmarks
                 string args = local != null ? "\"" + local + "\"" : "--folder-uri \"" + b.uri + "\"";
                 try
                 {
-                    ProcessStartInfo psi = new ProcessStartInfo(exe, args);
-                    psi.UseShellExecute = false;
-                    Process.Start(psi);
+                    StartIdeProcess(exe, args);
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    message = ex.Message;
+                    message = FriendlyError(ex.Message);
                     return false;
                 }
             }
@@ -2613,9 +2644,7 @@ namespace CodeBuddyBookmarks
             string args = local != null ? "-n \"" + local + "\"" : "-n --folder-uri \"" + b.uri + "\"";
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo(exe, args);
-                psi.UseShellExecute = false;
-                Process.Start(psi);
+                StartIdeProcess(exe, args);
                 b.OpenNow = true;
                 b.lastOpened = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 SaveStore();
@@ -2625,7 +2654,7 @@ namespace CodeBuddyBookmarks
             }
             catch (Exception ex)
             {
-                status.Text = "打开失败：" + ex.Message;
+                status.Text = "打开失败：" + FriendlyError(ex.Message);
             }
         }
 
@@ -2880,9 +2909,7 @@ namespace CodeBuddyBookmarks
 
                     try
                     {
-                        ProcessStartInfo psi = new ProcessStartInfo(exe, args);
-                        psi.UseShellExecute = false;
-                        Process.Start(psi);
+                        StartIdeProcess(exe, args);
                         ok++;
                         b.OpenNow = true;
                         b.lastOpened = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
@@ -2890,7 +2917,7 @@ namespace CodeBuddyBookmarks
                     catch (Exception ex)
                     {
                         failed++;
-                        problems.Add(b.name + "  →  " + ex.Message);
+                        problems.Add(b.name + "  →  " + FriendlyError(ex.Message));
                     }
 
                     int delay = (int)numDelay.Value;
