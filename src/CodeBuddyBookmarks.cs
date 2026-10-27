@@ -51,6 +51,7 @@ namespace CodeBuddyBookmarks
         public static Color RowLineColor, PathColor, TypeColor, NameMuted, EmptyTitle, EmptyHint;
         public static Color BtnHover, BtnPress, BtnBorder;
         public static Color ChipRedBack, ChipGreenBack, ChipGrayBack;
+        public static Color MenuBack, MenuHover;
 
         // 复用的 GDI 对象（自绘时避免每次 Paint 都 new），切主题时重建
         public static SolidBrush BgWhite, BgHover, BgSelected, HeaderBg, WindowBrush;
@@ -91,6 +92,9 @@ namespace CodeBuddyBookmarks
             ChipGreenBack = dark ? Color.FromArgb(28, 52, 40) : Color.FromArgb(232, 247, 238);
             ChipGrayBack = dark ? Color.FromArgb(46, 50, 60) : Color.FromArgb(242, 244, 248);
 
+            MenuBack = dark ? Color.FromArgb(43, 47, 57) : Color.FromArgb(252, 252, 253);
+            MenuHover = dark ? Color.FromArgb(56, 61, 74) : Color.FromArgb(240, 243, 248);
+
             Swap(ref BgWhite, new SolidBrush(RowBack));
             Swap(ref BgHover, new SolidBrush(RowHover));
             Swap(ref BgSelected, new SolidBrush(RowSelected));
@@ -123,6 +127,167 @@ namespace CodeBuddyBookmarks
             p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
             p.CloseFigure();
             return p;
+        }
+    }
+
+    // ---------------- 菜单外观（圆角 + 悬停高亮 + 图标） ----------------
+    internal class FluentMenuColors : ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground { get { return Theme.MenuBack; } }
+        public override Color ImageMarginGradientBegin { get { return Theme.MenuBack; } }
+        public override Color ImageMarginGradientMiddle { get { return Theme.MenuBack; } }
+        public override Color ImageMarginGradientEnd { get { return Theme.MenuBack; } }
+        public override Color MenuBorder { get { return Theme.Border; } }
+        public override Color MenuItemBorder { get { return Color.Transparent; } }
+        public override Color MenuItemSelected { get { return Theme.MenuHover; } }
+        public override Color SeparatorDark { get { return Theme.Border; } }
+        public override Color SeparatorLight { get { return Theme.MenuBack; } }
+    }
+
+    internal class FluentMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public FluentMenuRenderer() : base(new FluentMenuColors()) { RoundedEdges = false; }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            ToolStripMenuItem mi = e.Item as ToolStripMenuItem;
+            if (mi == null) { base.OnRenderMenuItemBackground(e); return; }
+            if (!mi.Selected && !mi.Pressed) return;
+
+            Rectangle r = new Rectangle(4, 1, Math.Max(10, mi.Width - 8), Math.Max(8, mi.Height - 2));
+            SmoothingMode old = e.Graphics.SmoothingMode;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath p = Theme.Round(r, 4))
+            using (SolidBrush b = new SolidBrush(mi.Pressed ? Theme.BtnPress : Theme.MenuHover))
+                e.Graphics.FillPath(b, p);
+            e.Graphics.SmoothingMode = old;
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Enabled ? Theme.TextMain : Theme.Muted;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            Rectangle b = e.Item.Bounds;
+            using (Pen p = new Pen(Theme.Border))
+                e.Graphics.DrawLine(p, b.Left + 10, b.Top + b.Height / 2, b.Right - 10, b.Top + b.Height / 2);
+        }
+
+        // 勾选的菜单项：用一个强调色圆点代替系统对勾
+        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+        {
+            Rectangle b = e.ImageRectangle;
+            SmoothingMode old = e.Graphics.SmoothingMode;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (SolidBrush brush = new SolidBrush(Theme.Accent))
+                e.Graphics.FillEllipse(brush, b.X + 5, b.Y + b.Height / 2 - 3, 6, 6);
+            e.Graphics.SmoothingMode = old;
+        }
+    }
+
+    internal static class MenuFx
+    {
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+        private static readonly Dictionary<string, Bitmap> iconCache = new Dictionary<string, Bitmap>();
+
+        public static void Apply(ContextMenuStrip menu)
+        {
+            try
+            {
+                menu.Renderer = new FluentMenuRenderer();
+                menu.ShowImageMargin = true;
+                menu.ImageScalingSize = new Size(16, 16);
+                menu.DropShadowEnabled = true;
+                menu.Font = new Font("Microsoft YaHei UI", 9.5F);
+                menu.Padding = new Padding(0, 6, 0, 6);
+                menu.HandleCreated += delegate { Round(menu.Handle); };
+                menu.Opened += delegate { Shape(menu); };
+                menu.Opening += delegate { Tune(menu); };
+                Tune(menu);
+            }
+            catch (Exception ex) { Log.Write("MenuFx.Apply", ex); }
+        }
+
+        private static void Tune(ToolStrip strip)
+        {
+            foreach (ToolStripItem it in strip.Items)
+            {
+                ToolStripMenuItem mi = it as ToolStripMenuItem;
+                if (mi == null) continue;
+                mi.Padding = new Padding(0, 4, 0, 4);
+                if (!mi.HasDropDownItems) continue;
+                mi.DropDown.Renderer = strip.Renderer;
+                mi.DropDown.DropShadowEnabled = true;
+                mi.DropDown.Font = strip.Font;
+                mi.DropDown.Padding = new Padding(0, 6, 0, 6);
+                if (mi.DropDown.Tag == null)
+                {
+                    mi.DropDown.Tag = "shaped";
+                    mi.DropDown.Opened += delegate (object s, EventArgs ev) { Shape((ToolStripDropDown)s); };
+                }
+            }
+        }
+
+        // 把菜单窗口裁成圆角（DWM 对弹出菜单不一定生效，这里兜底）
+        private static void Shape(ToolStripDropDown dd)
+        {
+            try
+            {
+                if (dd.Width <= 0 || dd.Height <= 0) return;
+                using (GraphicsPath p = Theme.Round(new Rectangle(0, 0, dd.Width, dd.Height), 8))
+                {
+                    Region old = dd.Region;
+                    dd.Region = new Region(p);
+                    if (old != null) old.Dispose();
+                }
+            }
+            catch { }
+        }
+
+        // Win11：菜单窗口圆角 + 深色模式
+        private static void Round(IntPtr handle)
+        {
+            try
+            {
+                int pref = 2;   // DWMWCP_ROUND
+                DwmSetWindowAttribute(handle, 33, ref pref, sizeof(int));
+                int dark = Theme.IsDark ? 1 : 0;
+                DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
+            }
+            catch { }
+        }
+
+        public static Image Icon(string glyph)
+        {
+            return Icon(glyph, Theme.Muted);
+        }
+
+        public static Image Icon(string glyph, Color color)
+        {
+            string key = glyph + "|" + color.ToArgb();
+            Bitmap bmp;
+            if (iconCache.TryGetValue(key, out bmp)) return bmp;
+
+            try
+            {
+                bmp = new Bitmap(16, 16);
+                using (Graphics g = Graphics.FromImage(bmp))
+                using (Font f = new Font("Segoe Fluent Icons", 11F))
+                {
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    TextRenderer.DrawText(g, glyph, f, new Rectangle(0, 0, 16, 16), color,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                }
+            }
+            catch { bmp = null; }
+
+            iconCache[key] = bmp;
+            return bmp;
         }
     }
 
@@ -817,6 +982,7 @@ namespace CodeBuddyBookmarks
             trayMenu = new ContextMenuStrip();
             trayMenu.Font = new Font("Microsoft YaHei UI", 9F);
             trayMenu.ShowItemToolTips = true;
+            MenuFx.Apply(trayMenu);
             trayMenu.Opening += delegate
             {
                 try { BuildTrayMenu(); }
@@ -836,9 +1002,9 @@ namespace CodeBuddyBookmarks
             if (trayMenu == null) return;
             trayMenu.Items.Clear();
 
-            trayMenu.Items.Add("打开主界面", null, delegate { ShowFromTray(); });
-            trayMenu.Items.Add("刷新状态", null, delegate { RefreshStates(); });
-            ToolStripMenuItem darkItem = new ToolStripMenuItem("深色模式");
+            trayMenu.Items.Add("打开主界面", MenuFx.Icon("\uE80F"), delegate { ShowFromTray(); });
+            trayMenu.Items.Add("刷新状态", MenuFx.Icon("\uE72C"), delegate { RefreshStates(); });
+            ToolStripMenuItem darkItem = new ToolStripMenuItem("深色模式", MenuFx.Icon("\uE708"));
             darkItem.Checked = Theme.IsDark;
             darkItem.ToolTipText = "切换深色 / 浅色界面";
             darkItem.Click += delegate
@@ -877,7 +1043,8 @@ namespace CodeBuddyBookmarks
                         break;
                     }
                     Bookmark bb = b;
-                    ToolStripMenuItem item = new ToolStripMenuItem(bb.name == null ? "(未命名)" : bb.name);
+                    ToolStripMenuItem item = new ToolStripMenuItem(bb.name == null ? "(未命名)" : bb.name,
+                        MenuFx.Icon("\uE8B7"));
                     item.Checked = bb.OpenNow;
                     item.ToolTipText = bb.OpenNow ? "已在运行 · 点击置顶" : "未打开 · 点击打开新窗口";
                     item.Click += delegate { ActivateBookmark(bb); };
@@ -903,7 +1070,8 @@ namespace CodeBuddyBookmarks
             if (extras.Count > 0)
             {
                 trayMenu.Items.Add(new ToolStripSeparator());
-                ToolStripMenuItem head = new ToolStripMenuItem("未加入书签的窗口（" + extras.Count + "）");
+                ToolStripMenuItem head = new ToolStripMenuItem("未加入书签的窗口（" + extras.Count + "）",
+                    MenuFx.Icon("\uE7C4"));
                 head.Enabled = false;
                 trayMenu.Items.Add(head);
 
@@ -924,19 +1092,19 @@ namespace CodeBuddyBookmarks
                 }
 
                 List<Bookmark> toAdd = extras;
-                trayMenu.Items.Add("把以上窗口加入书签", null, delegate { AddBookmarks(toAdd); });
+                trayMenu.Items.Add("把以上窗口加入书签", MenuFx.Icon("\uE8F4"), delegate { AddBookmarks(toAdd); });
             }
 
             trayMenu.Items.Add(new ToolStripSeparator());
-            trayMenu.Items.Add("全部打开", null, delegate { CheckAll(true); OpenChecked(false); });
+            trayMenu.Items.Add("全部打开", MenuFx.Icon("\uE8A7"), delegate { CheckAll(true); OpenChecked(false); });
 
-            ToolStripMenuItem autoItem = new ToolStripMenuItem("开机自动启动");
+            ToolStripMenuItem autoItem = new ToolStripMenuItem("开机自动启动", MenuFx.Icon("\uE768"));
             autoItem.Checked = IsAutoStartEnabled();
             autoItem.ToolTipText = "开机后自动启动，并缩到托盘后台运行";
             autoItem.Click += delegate { ToggleAutoStart(); };
             trayMenu.Items.Add(autoItem);
 
-            trayMenu.Items.Add("退出", null, delegate
+            trayMenu.Items.Add("退出", MenuFx.Icon("\uE7E8"), delegate
             {
                 exiting = true;
                 Close();
@@ -1439,6 +1607,7 @@ namespace CodeBuddyBookmarks
             menu.Items.Add("全不选", null, delegate { CheckAll(false); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("删除", null, delegate { DeleteSelected(); });
+            MenuFx.Apply(menu);
             list.ContextMenuStrip = menu;
         }
 
@@ -1760,10 +1929,11 @@ namespace CodeBuddyBookmarks
             }
             ContextMenuStrip m = new ContextMenuStrip();
             m.Font = new Font("Microsoft YaHei UI", 9F);
-            m.Items.Add("加入书签", null, delegate { AddExtraSelected(); });
-            m.Items.Add("立即打开这个窗口", null, delegate { OpenSingle(hit.Tag as Bookmark); });
+            m.Items.Add("加入书签", MenuFx.Icon("\uE8F4"), delegate { AddExtraSelected(); });
+            m.Items.Add("立即打开这个窗口", MenuFx.Icon("\uE8A7"), delegate { OpenSingle(hit.Tag as Bookmark); });
             m.Items.Add(new ToolStripSeparator());
-            m.Items.Add("加入全部未加书签的窗口", null, delegate { AddAllExtras(); });
+            m.Items.Add("加入全部未加书签的窗口", MenuFx.Icon("\uE7C4"), delegate { AddAllExtras(); });
+            MenuFx.Apply(m);
             m.Show(listExtra, e.Location);
         }
 
