@@ -200,8 +200,8 @@ namespace CodeBuddyBookmarks
             try
             {
                 menu.Renderer = new FluentMenuRenderer();
-                menu.ShowImageMargin = true;
-                menu.ImageScalingSize = new Size(16, 16);
+                menu.ShowImageMargin = false;   // 不要图标列，避免左侧空一条
+                menu.ShowCheckMargin = true;
                 menu.DropShadowEnabled = true;
                 menu.Font = new Font("Microsoft YaHei UI", 9.5F);
                 menu.Padding = new Padding(0, 6, 0, 6);
@@ -1002,9 +1002,9 @@ namespace CodeBuddyBookmarks
             if (trayMenu == null) return;
             trayMenu.Items.Clear();
 
-            trayMenu.Items.Add("打开主界面", MenuFx.Icon("\uE80F"), delegate { ShowFromTray(); });
-            trayMenu.Items.Add("刷新状态", MenuFx.Icon("\uE72C"), delegate { RefreshStates(); });
-            ToolStripMenuItem darkItem = new ToolStripMenuItem("深色模式", MenuFx.Icon("\uE708"));
+            trayMenu.Items.Add("打开主界面", null, delegate { ShowFromTray(); });
+            trayMenu.Items.Add("刷新状态", null, delegate { RefreshStates(); });
+            ToolStripMenuItem darkItem = new ToolStripMenuItem("深色模式", null);
             darkItem.Checked = Theme.IsDark;
             darkItem.ToolTipText = "切换深色 / 浅色界面";
             darkItem.Click += delegate
@@ -1044,7 +1044,7 @@ namespace CodeBuddyBookmarks
                     }
                     Bookmark bb = b;
                     ToolStripMenuItem item = new ToolStripMenuItem(bb.name == null ? "(未命名)" : bb.name,
-                        MenuFx.Icon("\uE8B7"));
+                        null);
                     item.Checked = bb.OpenNow;
                     item.ToolTipText = bb.OpenNow ? "已在运行 · 点击置顶" : "未打开 · 点击打开新窗口";
                     item.Click += delegate { ActivateBookmark(bb); };
@@ -1071,7 +1071,7 @@ namespace CodeBuddyBookmarks
             {
                 trayMenu.Items.Add(new ToolStripSeparator());
                 ToolStripMenuItem head = new ToolStripMenuItem("未加入书签的窗口（" + extras.Count + "）",
-                    MenuFx.Icon("\uE7C4"));
+                    null);
                 head.Enabled = false;
                 trayMenu.Items.Add(head);
 
@@ -1092,19 +1092,19 @@ namespace CodeBuddyBookmarks
                 }
 
                 List<Bookmark> toAdd = extras;
-                trayMenu.Items.Add("把以上窗口加入书签", MenuFx.Icon("\uE8F4"), delegate { AddBookmarks(toAdd); });
+                trayMenu.Items.Add("把以上窗口加入书签", null, delegate { AddBookmarks(toAdd); });
             }
 
             trayMenu.Items.Add(new ToolStripSeparator());
-            trayMenu.Items.Add("全部打开", MenuFx.Icon("\uE8A7"), delegate { CheckAll(true); OpenChecked(false); });
+            trayMenu.Items.Add("全部打开", null, delegate { CheckAll(true); OpenChecked(false); });
 
-            ToolStripMenuItem autoItem = new ToolStripMenuItem("开机自动启动", MenuFx.Icon("\uE768"));
+            ToolStripMenuItem autoItem = new ToolStripMenuItem("开机自动启动", null);
             autoItem.Checked = IsAutoStartEnabled();
             autoItem.ToolTipText = "开机后自动启动，并缩到托盘后台运行";
             autoItem.Click += delegate { ToggleAutoStart(); };
             trayMenu.Items.Add(autoItem);
 
-            trayMenu.Items.Add("退出", MenuFx.Icon("\uE7E8"), delegate
+            trayMenu.Items.Add("退出", null, delegate
             {
                 exiting = true;
                 Close();
@@ -1929,10 +1929,10 @@ namespace CodeBuddyBookmarks
             }
             ContextMenuStrip m = new ContextMenuStrip();
             m.Font = new Font("Microsoft YaHei UI", 9F);
-            m.Items.Add("加入书签", MenuFx.Icon("\uE8F4"), delegate { AddExtraSelected(); });
-            m.Items.Add("立即打开这个窗口", MenuFx.Icon("\uE8A7"), delegate { OpenSingle(hit.Tag as Bookmark); });
+            m.Items.Add("加入书签", null, delegate { AddExtraSelected(); });
+            m.Items.Add("立即打开这个窗口", null, delegate { OpenSingle(hit.Tag as Bookmark); });
             m.Items.Add(new ToolStripSeparator());
-            m.Items.Add("加入全部未加书签的窗口", MenuFx.Icon("\uE7C4"), delegate { AddAllExtras(); });
+            m.Items.Add("加入全部未加书签的窗口", null, delegate { AddAllExtras(); });
             MenuFx.Apply(m);
             m.Show(listExtra, e.Location);
         }
