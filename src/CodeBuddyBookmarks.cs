@@ -738,6 +738,7 @@ namespace CodeBuddyBookmarks
         private ToolStripStatusLabel statusRight;
         private NumericUpDown numDelay;
         private CheckBox chkRaise;
+        private Label lblDelay;
         private TextBox txtSearch;
 
         private FlatButton btnOpen, btnAll, btnAdd, btnImport, btnDel, btnUp, btnDown, btnRefresh;
@@ -1369,7 +1370,7 @@ namespace CodeBuddyBookmarks
             chkRaise.ForeColor = Theme.TextMain;
             chkRaise.Location = new Point(346, 13);
 
-            Label lblDelay = new Label();
+            lblDelay = new Label();
             lblDelay.Text = "打开间隔(ms)";
             lblDelay.AutoSize = true;
             lblDelay.ForeColor = Theme.Muted;
@@ -2144,6 +2145,27 @@ namespace CodeBuddyBookmarks
             LayoutEmpty();
         }
 
+        // 筛选行：搜索框占“状态+书签”两列，其余控件从“路径”列起点开始，与表头对齐
+        private void LayoutOptions()
+        {
+            if (options == null || chkRaise == null) return;
+
+            int x = (list != null && list.Columns.Count >= 2)
+                ? list.Columns[0].Width + list.Columns[1].Width + 8
+                : 346;
+
+            chkRaise.Location = new Point(x, 13);
+            int x2 = chkRaise.Right + 24;
+
+            if (lblDelay != null) lblDelay.Location = new Point(x2, 14);
+            x2 = (lblDelay != null ? lblDelay.Right : x2) + 8;
+
+            if (numDelay != null) numDelay.Location = new Point(x2, 10);
+            x2 = (numDelay != null ? numDelay.Right : x2) + 16;
+
+            if (chkAuto != null) chkAuto.Location = new Point(x2, 13);
+        }
+
         private void LayoutExtra()
         {
             if (panelExtra == null || btnAddAll == null) return;
@@ -2337,7 +2359,11 @@ namespace CodeBuddyBookmarks
                 list.Columns[2].Width = path;
                 list.Columns[3].Width = type;
             }
-            finally { applyingCols = false; }
+            finally
+            {
+                applyingCols = false;
+                LayoutOptions();
+            }
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
