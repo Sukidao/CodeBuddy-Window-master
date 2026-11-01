@@ -1136,7 +1136,6 @@ namespace CodeBuddyBookmarks
                 SaveUiState();
             };
             trayMenu.Items.Add(darkItem);
-            trayMenu.Items.Add(BuildSortMenu());
             trayMenu.Items.Add(new ToolStripSeparator());
 
             // 同步一次"已打开"状态
@@ -1159,7 +1158,8 @@ namespace CodeBuddyBookmarks
             else
             {
                 int shown = 0;
-                foreach (Bookmark b in store.items)
+                // 与主界面完全同一套排序（窗口里怎么排，托盘就怎么排）
+                foreach (Bookmark b in OrderedItems())
                 {
                     if (shown >= 25)
                     {
