@@ -640,7 +640,8 @@ namespace CodeBuddyBookmarks
         public bool dark;
         public bool darkSet;
         public int[] colWidths;
-        public int sortMode;      // 0 手动 1 名称 2 最近打开
+        public int sortMode;      // 0 手动 1 名称 2 最近打开 3 路径 4 类型 5 状态
+        public bool sortAsc = true;
     }
 
     internal class BookmarkFile
@@ -744,12 +745,20 @@ namespace CodeBuddyBookmarks
         private Label lblExtraTitle;
         private List<Bookmark> extras = new List<Bookmark>();
         private Label lblEmptyTitle, lblEmptyHint;
+        private Label lblRecentHead;
+        private Label[] recentLinks;
+        private Bookmark[] recentTargets;
 
         private bool busy = false;
         private Icon appIcon;
         private int[] userCols;     // 用户手动拖过的列宽
-        private int sortMode;       // 0 手动 1 名称 2 最近打开
+        private int sortMode;       // 0 手动 1 名称 2 最近打开 3 路径 4 类型 5 状态
+        private bool sortAsc = true;
         private bool applyingCols;
+        private ToolTip tip;
+        private string tipText = "";
+        private int lastColClick = -1;
+        private DateTime lastColClickAt = DateTime.MinValue;
 
         private int hoverIndex = -1;
         private readonly Font listFont = new Font("Microsoft YaHei UI", 9.5F);
@@ -832,6 +841,7 @@ namespace CodeBuddyBookmarks
             {
                 if (st.colWidths != null && st.colWidths.Length == 4) userCols = st.colWidths;
                 sortMode = st.sortMode;
+                sortAsc = st.sortAsc;
             }
             ApplyTheme(st != null && st.darkSet ? st.dark : SystemUsesDark());
 
@@ -875,6 +885,7 @@ namespace CodeBuddyBookmarks
                 st.dark = Theme.IsDark;
                 st.darkSet = true;
                 st.sortMode = sortMode;
+                st.sortAsc = sortAsc;
                 if (userCols != null && userCols.Length == 4) st.colWidths = userCols;
 
                 JavaScriptSerializer json = new JavaScriptSerializer();
@@ -926,6 +937,16 @@ namespace CodeBuddyBookmarks
 
             if (lblEmptyTitle != null) { lblEmptyTitle.BackColor = Theme.WindowBack; lblEmptyTitle.ForeColor = Theme.EmptyTitle; }
             if (lblEmptyHint != null) { lblEmptyHint.BackColor = Theme.WindowBack; lblEmptyHint.ForeColor = Theme.EmptyHint; }
+            if (lblRecentHead != null) { lblRecentHead.BackColor = Theme.WindowBack; lblRecentHead.ForeColor = Theme.Muted; }
+            if (recentLinks != null)
+            {
+                foreach (Label lk in recentLinks)
+                {
+                    if (lk == null) continue;
+                    lk.BackColor = Theme.WindowBack;
+                    lk.ForeColor = Theme.Accent;
+                }
+            }
             if (lblExtraTitle != null) lblExtraTitle.ForeColor = Theme.Muted;
             if (lblHint != null) lblHint.ForeColor = Theme.HeaderText;
             if (lblSummary != null) lblSummary.ForeColor = Theme.HeaderText;
@@ -1266,7 +1287,7 @@ namespace CodeBuddyBookmarks
             list.CheckBoxes = false;      // 勾选框自己画、自己处理，避免和系统绘制错位
             list.FullRowSelect = true;
             list.MultiSelect = true;
-            list.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+            list.HeaderStyle = ColumnHeaderStyle.Clickable;
             list.BorderStyle = BorderStyle.None;
             list.HideSelection = false;
             list.SmallImageList = il;
@@ -1287,6 +1308,13 @@ namespace CodeBuddyBookmarks
                 userCols = w;
                 SaveUiState();
             };
+
+            list.ColumnClick += OnColumnClick;
+
+            tip = new ToolTip();
+            tip.InitialDelay = 700;
+            tip.AutoPopDelay = 20000;
+            tip.ReshowDelay = 120;
 
             // 支持把文件夹从资源管理器拖进来
             list.AllowDrop = true;
@@ -1491,8 +1519,40 @@ namespace CodeBuddyBookmarks
             panelEmpty.Dock = DockStyle.Fill;
             panelEmpty.BackColor = Color.White;
             panelEmpty.Visible = false;
+            lblRecentHead = new Label();
+            lblRecentHead.AutoSize = false;
+            lblRecentHead.TextAlign = ContentAlignment.MiddleCenter;
+            lblRecentHead.Font = new Font("Microsoft YaHei UI", 9F);
+            lblRecentHead.ForeColor = Theme.Muted;
+            lblRecentHead.BackColor = Theme.WindowBack;
+            lblRecentHead.Text = "最近打开";
+            lblRecentHead.Visible = false;
+
+            recentLinks = new Label[3];
+            recentTargets = new Bookmark[3];
+            for (int i = 0; i < 3; i++)
+            {
+                Label lk = new Label();
+                lk.AutoSize = false;
+                lk.TextAlign = ContentAlignment.MiddleCenter;
+                lk.Font = new Font("Microsoft YaHei UI", 10F);
+                lk.ForeColor = Theme.Accent;
+                lk.BackColor = Theme.WindowBack;
+                lk.Cursor = Cursors.Hand;
+                lk.Visible = false;
+                int idx = i;
+                lk.Click += delegate
+                {
+                    Bookmark t = recentTargets[idx];
+                    if (t != null) ActivateBookmark(t);
+                };
+                recentLinks[i] = lk;
+            }
+
             panelEmpty.Controls.Add(lblEmptyTitle);
             panelEmpty.Controls.Add(lblEmptyHint);
+            panelEmpty.Controls.Add(lblRecentHead);
+            for (int i = 0; i < 3; i++) panelEmpty.Controls.Add(recentLinks[i]);
             panelEmpty.Resize += delegate { LayoutEmpty(); };
             listWrap.Controls.Add(panelEmpty);
             panelEmpty.BringToFront();
@@ -1605,6 +1665,55 @@ namespace CodeBuddyBookmarks
             list.ContextMenuStrip = menu;
         }
 
+        // 点列头排序；0.35 秒内点同一列两次 = 双击 → 该列宽度自适应内容
+        private void OnColumnClick(object sender, ColumnClickEventArgs e)
+        {
+            bool dbl = e.Column == lastColClick &&
+                       (DateTime.UtcNow - lastColClickAt).TotalMilliseconds < 350;
+            lastColClick = e.Column;
+            lastColClickAt = DateTime.UtcNow;
+
+            if (dbl)
+            {
+                lastColClick = -1;
+                AutoFitColumn(e.Column);
+                return;
+            }
+
+            int mode = e.Column == 0 ? 5 : (e.Column == 1 ? 1 : (e.Column == 2 ? 3 : 4));
+            if (sortMode == mode) sortAsc = !sortAsc;
+            else { sortMode = mode; sortAsc = true; }
+
+            SaveUiState();
+            RefreshRows();
+            status.Text = "排序：" + list.Columns[e.Column].Text + (sortAsc ? " ↑" : " ↓");
+        }
+
+        private int SortColumn()
+        {
+            if (sortMode == 1) return 1;
+            if (sortMode == 3) return 2;
+            if (sortMode == 4) return 3;
+            if (sortMode == 5) return 0;
+            return -1;
+        }
+
+        private void AutoFitColumn(int col)
+        {
+            if (col < 0 || col >= list.Columns.Count) return;
+
+            int w = 70;
+            foreach (ListViewItem row in list.Items)
+            {
+                string text = row.SubItems.Count > col ? row.SubItems[col].Text : row.Text;
+                Size sz = TextRenderer.MeasureText(text, listFont);
+                if (sz.Width + 46 > w) w = sz.Width + 46;
+            }
+            list.Columns[col].Width = Math.Min(Math.Max(w, 70), 620);
+            SaveUiState();
+            status.Text = "「" + list.Columns[col].Text + "」列宽已按内容调整";
+        }
+
         private void SetSortMode(int mode)
         {
             sortMode = mode;
@@ -1685,6 +1794,20 @@ namespace CodeBuddyBookmarks
         {
             ListViewHitTestInfo hit = list.HitTest(e.Location);
             SetHover(hit.Item == null ? -1 : hit.Item.Index);
+
+            // 悬停显示完整路径（路径列被省略时也能看全）
+            if (tip == null) return;
+            string text = "";
+            if (hit.Item != null)
+            {
+                Bookmark b = hit.Item.Tag as Bookmark;
+                if (b != null) text = PathText(b);
+            }
+            if (text != tipText)
+            {
+                tipText = text;
+                tip.SetToolTip(list, text);
+            }
         }
 
         private void SetHover(int idx)
@@ -1703,12 +1826,26 @@ namespace CodeBuddyBookmarks
             g.DrawLine(Theme.HeaderLine, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
 
             bool rightAlign = sender == list && e.ColumnIndex == 3;
+            bool sorted = sender == list && e.ColumnIndex == SortColumn();
             int indent = (sender == list && e.ColumnIndex == 1) ? 32 : 12;
+            int reserved = (rightAlign ? 14 : 6) + (sorted ? 14 : 0);
             Rectangle r = new Rectangle(e.Bounds.X + indent, e.Bounds.Y,
-                Math.Max(10, e.Bounds.Width - indent - (rightAlign ? 14 : 6)), e.Bounds.Height);
-            TextRenderer.DrawText(g, e.Header.Text, headerFont, r, Theme.Muted,
+                Math.Max(10, e.Bounds.Width - indent - reserved), e.Bounds.Height);
+            TextRenderer.DrawText(g, e.Header.Text, headerFont, r, sorted ? Theme.Accent : Theme.Muted,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
                 (rightAlign ? TextFormatFlags.Right : TextFormatFlags.Left));
+
+            // 排序方向小三角
+            if (sorted)
+            {
+                int ax = e.Bounds.Right - 18;
+                int ay = e.Bounds.Y + e.Bounds.Height / 2;
+                Point[] pts = sortAsc
+                    ? new Point[] { new Point(ax, ay + 2), new Point(ax + 8, ay + 2), new Point(ax + 4, ay - 3) }
+                    : new Point[] { new Point(ax, ay - 3), new Point(ax + 8, ay - 3), new Point(ax + 4, ay + 2) };
+                using (SolidBrush b = new SolidBrush(Theme.Accent))
+                    g.FillPolygon(b, pts);
+            }
         }
 
         private void DrawCheckBox(Graphics g, Rectangle box, bool check)
@@ -1804,41 +1941,36 @@ namespace CodeBuddyBookmarks
         [DllImport("user32.dll")]
         private static extern bool DestroyIcon(IntPtr hIcon);
 
+        // 单色线性图标（Segoe Fluent Icons），跟整体灰阶配色统一
         private Bitmap GetItemIcon(Bookmark b)
         {
             string path = ToLocalPath(b.uri);
-            string key;
-            if (path == null) key = "remote";
-            else if (Directory.Exists(path)) key = "dir";
-            else if (File.Exists(path)) key = "file";
-            else key = "missing";
+            string kind;
+            if (path == null) kind = "remote";
+            else if (Directory.Exists(path)) kind = "dir";
+            else if (File.Exists(path)) kind = "file";
+            else kind = "missing";
 
+            string key = kind + (Theme.IsDark ? "|d" : "|l");
             Bitmap cached;
             if (iconCache.TryGetValue(key, out cached)) return cached;
+
+            string glyph = kind == "remote" ? "\uE7C4" : (kind == "file" ? "\uE8A5" : "\uE8B7");
+            Color color = Theme.IsDark ? Color.FromArgb(148, 156, 172) : Color.FromArgb(138, 146, 162);
 
             Bitmap bmp = null;
             try
             {
-                SHFILEINFO info = new SHFILEINFO();
-                const uint SHGFI_ICON = 0x100;
-                const uint SHGFI_SMALLICON = 0x1;
-                const uint SHGFI_USEFILEATTRIBUTES = 0x10;
-                const uint FILE_ATTRIBUTE_DIRECTORY = 0x10;
-                const uint FILE_ATTRIBUTE_NORMAL = 0x80;
-
-                string target = key == "file" && path != null ? path : "C:\\";
-                uint attr = key == "file" ? FILE_ATTRIBUTE_NORMAL : FILE_ATTRIBUTE_DIRECTORY;
-
-                IntPtr ok = SHGetFileInfo(target, attr, ref info, (uint)Marshal.SizeOf(info),
-                    SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
-                if (ok != IntPtr.Zero && info.hIcon != IntPtr.Zero)
+                bmp = new Bitmap(16, 16);
+                using (Graphics g = Graphics.FromImage(bmp))
+                using (Font f = new Font("Segoe Fluent Icons", 10.5F))
                 {
-                    using (Icon ic = Icon.FromHandle(info.hIcon))
-                        bmp = ic.ToBitmap();
-                    DestroyIcon(info.hIcon);
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    TextRenderer.DrawText(g, glyph, f, new Rectangle(0, 0, 16, 16), color,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 }
             }
-            catch (Exception ex) { Log.Write("GetItemIcon", ex); }
+            catch (Exception ex) { Log.Write("GetItemIcon", ex); bmp = null; }
 
             iconCache[key] = bmp;
             return bmp;
@@ -1914,9 +2046,42 @@ namespace CodeBuddyBookmarks
             if (panelEmpty == null) return;
             int w = panelEmpty.ClientSize.Width;
             int h = panelEmpty.ClientSize.Height;
-            int top = Math.Max(40, h / 2 - 46);
+            int top = Math.Max(30, h / 2 - 96);
             lblEmptyTitle.Bounds = new Rectangle(24, top, Math.Max(100, w - 48), 26);
             lblEmptyHint.Bounds = new Rectangle(24, top + 30, Math.Max(100, w - 48), 24);
+            lblRecentHead.Bounds = new Rectangle(24, top + 72, Math.Max(100, w - 48), 22);
+            for (int i = 0; i < 3; i++)
+                recentLinks[i].Bounds = new Rectangle(24, top + 98 + i * 28, Math.Max(100, w - 48), 26);
+        }
+
+        // 空列表时给出"最近打开"的快捷入口
+        private void FillRecentLinks()
+        {
+            if (recentLinks == null) return;
+
+            List<Bookmark> sorted = new List<Bookmark>();
+            foreach (Bookmark b in store.items)
+                if (!string.IsNullOrEmpty(b.lastOpened)) sorted.Add(b);
+            sorted.Sort(delegate (Bookmark a, Bookmark b)
+            { return string.Compare(b.lastOpened, a.lastOpened, StringComparison.Ordinal); });
+
+            int n = Math.Min(3, sorted.Count);
+            for (int i = 0; i < 3; i++)
+            {
+                if (i < n)
+                {
+                    recentTargets[i] = sorted[i];
+                    recentLinks[i].Text = (sorted[i].name == null ? "(未命名)" : sorted[i].name);
+                    recentLinks[i].Visible = true;
+                }
+                else
+                {
+                    recentTargets[i] = null;
+                    recentLinks[i].Visible = false;
+                }
+            }
+            lblRecentHead.Visible = n > 0;
+            LayoutEmpty();
         }
 
         private void LayoutExtra()
@@ -2209,21 +2374,36 @@ namespace CodeBuddyBookmarks
         private List<Bookmark> OrderedItems()
         {
             List<Bookmark> ordered = new List<Bookmark>(store.items);
+            Comparison<Bookmark> cmp = null;
+
             if (sortMode == 1)
-            {
-                ordered.Sort(delegate (Bookmark a, Bookmark b)
-                {
-                    return string.Compare(a.name, b.name, StringComparison.CurrentCultureIgnoreCase);
-                });
-            }
+                cmp = delegate (Bookmark a, Bookmark b)
+                { return string.Compare(a.name, b.name, StringComparison.CurrentCultureIgnoreCase); };
             else if (sortMode == 2)
+                cmp = delegate (Bookmark a, Bookmark b)
+                { return string.Compare(b.lastOpened, a.lastOpened, StringComparison.Ordinal); };
+            else if (sortMode == 3)
+                cmp = delegate (Bookmark a, Bookmark b)
+                { return string.Compare(PathText(a), PathText(b), StringComparison.CurrentCultureIgnoreCase); };
+            else if (sortMode == 4)
+                cmp = delegate (Bookmark a, Bookmark b)
+                { return string.Compare(TypeText(a), TypeText(b), StringComparison.CurrentCultureIgnoreCase); };
+            else if (sortMode == 5)
+                cmp = delegate (Bookmark a, Bookmark b)
+                { return StateRank(a).CompareTo(StateRank(b)); };
+
+            if (cmp != null)
             {
-                ordered.Sort(delegate (Bookmark a, Bookmark b)
-                {
-                    return string.Compare(b.lastOpened, a.lastOpened, StringComparison.Ordinal);
-                });
+                ordered.Sort(cmp);
+                if (!sortAsc) ordered.Reverse();
             }
             return ordered;
+        }
+
+        // 已打开 0 / 未打开 1 / 路径失效 2
+        private static int StateRank(Bookmark b)
+        {
+            return b.Missing ? 2 : (b.OpenNow ? 0 : 1);
         }
 
         // file:///d%3A/xxx -> d:\xxx
@@ -2591,6 +2771,7 @@ namespace CodeBuddyBookmarks
                     lblEmptyTitle.Text = "这里还没有书签";
                     lblEmptyHint.Text = "用「导入当前窗口」把正在运行的窗口加进来，或用「添加文件夹」选择项目目录";
                 }
+                FillRecentLinks();
                 LayoutEmpty();
                 panelEmpty.BringToFront();
             }
