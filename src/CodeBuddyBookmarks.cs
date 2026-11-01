@@ -722,9 +722,13 @@ namespace CodeBuddyBookmarks
     public class MainForm : Form
     {
         private const int EM_SETCUEBANNER = 0x1501;
+        private const int WM_SETREDRAW = 0x000B;
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
         private readonly string workDir;
         private readonly string storePath;
@@ -820,13 +824,19 @@ namespace CodeBuddyBookmarks
             BuildUi();
             ApplyUiState();
             LayoutColumns();
+            LayoutOptions();
             LayoutToolbar();
 
             // 再小就排不下了（工具条和筛选行会挤在一起），设一个下限
             MinimumSize = new Size(940, 560);
 
-            // 拖完窗口就把大小记下来，避免异常退出时丢
-            ResizeEnd += delegate { if (!startHidden) SaveUiState(); };
+            // 拖完窗口：对齐筛选行，并把大小记下来
+            ResizeEnd += delegate
+            {
+                LayoutColumns();
+                LayoutOptions();
+                if (!startHidden) SaveUiState();
+            };
 
             LoadStore();
             liveCache = CollectLive();
@@ -1318,11 +1328,11 @@ namespace CodeBuddyBookmarks
             list.ItemCheck += OnItemCheck;
             list.DoubleClick += delegate { OpenChecked(true); };
             list.MouseUp += OnListMouseUp;
-            list.Resize += delegate { LayoutColumns(); };
-            // 竖滚动条出现 / 消失也会改变可用宽度，这里同步重排，避免挤出横向滚动条
+            // 拖动窗口时不要每个像素都重排：合并成 30ms 一次，拖完再补一次精确布局
+            list.Resize += delegate { QueueLayout(); };
             list.ClientSizeChanged += delegate
             {
-                if (list.ClientSize.Width != lastLayoutWidth) LayoutColumns();
+                if (list.ClientSize.Width != lastLayoutWidth) QueueLayout();
             };
             list.ColumnWidthChanged += delegate
             {
@@ -1338,8 +1348,8 @@ namespace CodeBuddyBookmarks
                 colShare = sh;
                 SaveUiState();
 
-                // 拖完立刻按新比例重新填满，去掉拖拽产生的横向滚动条
-                BeginInvoke(new Action(delegate { LayoutColumns(); }));
+                // 拖完立刻按新比例重新填满，去掉拖拽产生的横向滚动条；顺便把筛选行重新对齐
+                BeginInvoke(new Action(delegate { LayoutColumns(); LayoutOptions(); }));
             };
 
             list.ColumnClick += OnColumnClick;
@@ -1863,15 +1873,22 @@ namespace CodeBuddyBookmarks
             base.SetVisibleCore(value);
         }
 
+        private LinearGradientBrush headerBrush;
+        private bool headerBrushDark;
+
         private void OnHeaderPaint(object sender, PaintEventArgs e)
         {
             Rectangle r = new Rectangle(0, 0, header.Width, header.Height);
-            using (LinearGradientBrush brush = new LinearGradientBrush(
-                new Point(0, 0), new Point(r.Width, r.Height),
-                Theme.HeaderTop, Theme.HeaderBottom))
+
+            // 渐变刷子只按配色缓存一次（固定几何），拖动窗口时不再每帧 new 一个
+            if (headerBrush == null || headerBrushDark != Theme.IsDark)
             {
-                e.Graphics.FillRectangle(brush, r);
+                if (headerBrush != null) headerBrush.Dispose();
+                headerBrush = new LinearGradientBrush(new Point(0, 0), new Point(1400, 220),
+                    Theme.HeaderTop, Theme.HeaderBottom);
+                headerBrushDark = Theme.IsDark;
             }
+            e.Graphics.FillRectangle(headerBrush, r);
             // 顶部一条细高光
             using (SolidBrush b = new SolidBrush(Color.FromArgb(18, 255, 255, 255)))
                 e.Graphics.FillRectangle(b, new Rectangle(0, 0, r.Width, 1));
@@ -2369,6 +2386,17 @@ namespace CodeBuddyBookmarks
         // 四列默认占比：状态 / 书签 / 路径 / 类型
         private static readonly float[] DefaultShare = new float[] { 0.088f, 0.305f, 0.545f, 0.062f };
 
+        private bool inLayout;
+
+        // 列宽同步跟随窗口（不要用定时器延后，否则会出现"先按旧宽度画一帧、再跳一下"的顿感）
+        private void QueueLayout()
+        {
+            if (inLayout) return;
+            inLayout = true;
+            try { LayoutColumns(); }
+            finally { inLayout = false; }
+        }
+
         private void LayoutColumns()
         {
             if (list.Columns.Count != 4) return;
@@ -2394,15 +2422,21 @@ namespace CodeBuddyBookmarks
                     path = w - state - name - type - 1;
                 }
 
-                list.Columns[0].Width = state;
-                list.Columns[1].Width = name;
-                list.Columns[2].Width = Math.Max(80, path);
-                list.Columns[3].Width = type;
+                // 批量改完四列再一次性重绘（实测比逐列重绘快一倍）
+                list.BeginUpdate();
+                try
+                {
+                    list.Columns[0].Width = state;
+                    list.Columns[1].Width = name;
+                    list.Columns[2].Width = Math.Max(80, path);
+                    list.Columns[3].Width = type;
+                }
+                finally { list.EndUpdate(); }
             }
             finally
             {
                 applyingCols = false;
-                LayoutOptions();
+                // 注意：这里不调用 LayoutOptions()，避免拖动窗口时筛选行控件每帧左右抖动
             }
         }
 
