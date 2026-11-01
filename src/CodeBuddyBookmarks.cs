@@ -47,13 +47,14 @@ namespace CodeBuddyBookmarks
         public static Color HeaderTop, HeaderBottom, HeaderText;
         public static Color Card, Border, Muted, TextMain;
         public static Color WindowBack, HeaderBack, RowBack, RowHover, RowSelected;
+        public static Color RowOpen, RowOpenHover;   // 已打开的行：淡绿底
         public static Color RowLineColor, PathColor, TypeColor, NameMuted, EmptyTitle, EmptyHint;
         public static Color BtnHover, BtnPress, BtnBorder;
         public static Color ChipRedBack, ChipGreenBack, ChipGrayBack;
         public static Color MenuBack, MenuHover;
 
         // 复用的 GDI 对象（自绘时避免每次 Paint 都 new），切主题时重建
-        public static SolidBrush BgWhite, BgHover, BgSelected, HeaderBg, WindowBrush;
+        public static SolidBrush BgWhite, BgHover, BgSelected, HeaderBg, WindowBrush, BgOpen, BgOpenHover;
         public static Pen RowLine, HeaderLine;
 
         static Theme() { Apply(false); }
@@ -99,9 +100,14 @@ namespace CodeBuddyBookmarks
             AccentPress = Color.FromArgb(35, 88, 214);
             AccentText = Color.White;
 
+            RowOpen = dark ? Color.FromArgb(28, 52, 40) : Color.FromArgb(233, 247, 239);
+            RowOpenHover = dark ? Color.FromArgb(34, 62, 47) : Color.FromArgb(220, 241, 229);
+
             Swap(ref BgWhite, new SolidBrush(RowBack));
             Swap(ref BgHover, new SolidBrush(RowHover));
             Swap(ref BgSelected, new SolidBrush(RowSelected));
+            Swap(ref BgOpen, new SolidBrush(RowOpen));
+            Swap(ref BgOpenHover, new SolidBrush(RowOpenHover));
             Swap(ref HeaderBg, new SolidBrush(HeaderBack));
             Swap(ref WindowBrush, new SolidBrush(WindowBack));
             SwapPen(ref RowLine, new Pen(RowLineColor));
@@ -2045,7 +2051,13 @@ namespace CodeBuddyBookmarks
             Graphics g = e.Graphics;
             bool selected = e.Item.Selected;
             bool hover = e.ItemIndex == hoverIndex && !selected;
-            SolidBrush bg = selected ? Theme.BgSelected : (hover ? Theme.BgHover : Theme.BgWhite);
+
+            Bookmark rowBook = e.Item.Tag as Bookmark;
+            bool openRow = rowBook != null && rowBook.OpenNow && !rowBook.Missing;
+
+            SolidBrush bg = selected ? Theme.BgSelected
+                : (openRow ? (hover ? Theme.BgOpenHover : Theme.BgOpen)
+                           : (hover ? Theme.BgHover : Theme.BgWhite));
             g.FillRectangle(bg, e.Bounds);
             if (!selected)
                 g.DrawLine(Theme.RowLine, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
