@@ -1256,9 +1256,9 @@ namespace CodeBuddyBookmarks
         {
             // ---------- 列表 ----------
             ImageList il = new ImageList();
-            il.ImageSize = new Size(1, 34);       // 行高
+            il.ImageSize = new Size(1, 36);       // 行高
             il.ColorDepth = ColorDepth.Depth32Bit;
-            il.Images.Add(new Bitmap(1, 34));
+            il.Images.Add(new Bitmap(1, 36));
 
             list = new BufferedListView();
             list.Dock = DockStyle.Fill;
@@ -1343,25 +1343,19 @@ namespace CodeBuddyBookmarks
             chkRaise.Location = new Point(346, 11);
 
             Label lblDelay = new Label();
-            lblDelay.Text = "打开间隔";
+            lblDelay.Text = "打开间隔(ms)";
             lblDelay.AutoSize = true;
             lblDelay.ForeColor = Theme.Muted;
-            lblDelay.Location = new Point(506, 12);
+            lblDelay.Location = new Point(496, 12);
 
             numDelay = new NumericUpDown();
             numDelay.Minimum = 0;
             numDelay.Maximum = 15000;
             numDelay.Increment = 500;
             numDelay.Value = 1500;
-            numDelay.Location = new Point(572, 8);
-            numDelay.Width = 66;
+            numDelay.Location = new Point(596, 8);
+            numDelay.Width = 58;
             numDelay.BorderStyle = BorderStyle.FixedSingle;
-
-            Label lblMs = new Label();
-            lblMs.Text = "毫秒";
-            lblMs.AutoSize = true;
-            lblMs.ForeColor = Theme.Muted;
-            lblMs.Location = new Point(644, 12);
 
             options = new Panel();
             options.Dock = DockStyle.Top;
@@ -1377,14 +1371,13 @@ namespace CodeBuddyBookmarks
             options.Controls.Add(chkRaise);
             options.Controls.Add(lblDelay);
             options.Controls.Add(numDelay);
-            options.Controls.Add(lblMs);
 
             chkAuto = new CheckBox();
             chkAuto.Text = "5 秒自动刷新";
             chkAuto.Checked = true;
             chkAuto.AutoSize = true;
             chkAuto.ForeColor = Theme.TextMain;
-            chkAuto.Location = new Point(700, 11);
+            chkAuto.Location = new Point(668, 11);
             options.Controls.Add(chkAuto);
 
             // ---------- 工具条 ----------
@@ -1454,6 +1447,7 @@ namespace CodeBuddyBookmarks
             lblHint = new Label();
             lblHint.Text = "F5 刷新    Ctrl+F 搜索    F2 改名    双击打开";
             lblHint.AutoSize = false;
+            lblHint.Font = new Font("Microsoft YaHei UI", 8.5F);
             lblHint.TextAlign = ContentAlignment.MiddleRight;
             lblHint.ForeColor = Color.FromArgb(122, 134, 160);
             lblHint.BackColor = Color.Transparent;
@@ -1708,10 +1702,13 @@ namespace CodeBuddyBookmarks
             g.FillRectangle(Theme.HeaderBg, e.Bounds);
             g.DrawLine(Theme.HeaderLine, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
 
+            bool rightAlign = sender == list && e.ColumnIndex == 3;
             int indent = (sender == list && e.ColumnIndex == 1) ? 32 : 12;
-            Rectangle r = new Rectangle(e.Bounds.X + indent, e.Bounds.Y, Math.Max(10, e.Bounds.Width - indent - 6), e.Bounds.Height);
+            Rectangle r = new Rectangle(e.Bounds.X + indent, e.Bounds.Y,
+                Math.Max(10, e.Bounds.Width - indent - (rightAlign ? 14 : 6)), e.Bounds.Height);
             TextRenderer.DrawText(g, e.Header.Text, headerFont, r, Theme.Muted,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                (rightAlign ? TextFormatFlags.Right : TextFormatFlags.Left));
         }
 
         private void DrawCheckBox(Graphics g, Rectangle box, bool check)
@@ -1747,13 +1744,32 @@ namespace CodeBuddyBookmarks
             g.SmoothingMode = old;
         }
 
+        // 文本超出宽度时省略中间：前缀…后缀
+        private static string MiddleEllipsis(string text, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(text) || maxWidth <= 20) return text;
+            Size full = TextRenderer.MeasureText(text, s_measureFont);
+            if (full.Width <= maxWidth) return text;
+
+            int keep = Math.Max(6, (maxWidth - 14) / 2 / 7);   // 粗估两侧各保留多少字符
+            while (keep > 3)
+            {
+                string cut = text.Substring(0, keep) + "…" +
+                             text.Substring(Math.Max(keep, text.Length - keep));
+                if (TextRenderer.MeasureText(cut, s_measureFont).Width <= maxWidth) return cut;
+                keep--;
+            }
+            return text;
+        }
+
+        private static readonly Font s_measureFont = new Font("Microsoft YaHei UI", 9.5F);
+
         private void DrawChip(Graphics g, Rectangle area, string text, Color fg, Color back)
         {
-            Size sz = TextRenderer.MeasureText(text, chipFont);
             int h = 20;
-            int w = Math.Min(sz.Width + 26, area.Width - 8);
-            if (w < 30) return;
-            Rectangle chip = new Rectangle(area.X + 4, area.Y + (area.Height - h) / 2, w, h);
+            int w = Math.Min(72, area.Width - 12);   // 固定宽度，三行对齐更整齐
+            if (w < 40) return;
+            Rectangle chip = new Rectangle(area.X + 10, area.Y + (area.Height - h) / 2, w, h);
 
             SmoothingMode old = g.SmoothingMode;
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -1877,18 +1893,20 @@ namespace CodeBuddyBookmarks
                 return;
             }
 
-            // 第 2 列：路径
+            // 第 2 列：路径（太长时省略中间，保留盘符和最后一级目录）
             if (e.ColumnIndex == 2)
             {
-                TextRenderer.DrawText(g, PathText(b), listFont, r,
+                TextRenderer.DrawText(g, MiddleEllipsis(PathText(b), r.Width), listFont, r,
                     b.Missing ? Theme.Danger : Theme.PathColor,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
                 return;
             }
 
-            // 第 3 列：类型
-            TextRenderer.DrawText(g, TypeText(b), listFont, r, Theme.TypeColor,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            // 第 3 列：类型（右对齐，靠住窗口右边）
+            Rectangle tr2 = new Rectangle(e.Bounds.X, e.Bounds.Y,
+                Math.Max(10, e.Bounds.Width - 14), e.Bounds.Height);
+            TextRenderer.DrawText(g, TypeText(b), listFont, tr2, Theme.TypeColor,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.Right);
         }
 
         private void LayoutEmpty()
@@ -2086,8 +2104,8 @@ namespace CodeBuddyBookmarks
                 int w = list.ClientSize.Width;
                 if (w <= 0) return;
                 int state = 92;
-                int name = Math.Max(180, Math.Min(330, (int)((w - state) * 0.30)));
-                int type = 76;
+                int name = Math.Max(200, Math.Min(340, (int)((w - state) * 0.32)));
+                int type = 64;
                 int path = Math.Max(160, w - state - name - type - 8);
                 list.Columns[0].Width = state;
                 list.Columns[1].Width = name;
