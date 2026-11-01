@@ -1898,7 +1898,7 @@ namespace CodeBuddyBookmarks
             bool rightAlign = sender == list && e.ColumnIndex == 3;
             bool sorted = sender == list && e.ColumnIndex == SortColumn();
             int indent = (sender == list && e.ColumnIndex == 1) ? 32 : 12;
-            int reserved = (rightAlign ? 14 : 6) + (sorted ? 14 : 0);
+            int reserved = (rightAlign ? 8 : 6) + (sorted ? 14 : 0);
             Rectangle r = new Rectangle(e.Bounds.X + indent, e.Bounds.Y,
                 Math.Max(10, e.Bounds.Width - indent - reserved), e.Bounds.Height);
             TextRenderer.DrawText(g, e.Header.Text, headerFont, r, sorted ? Theme.Accent : Theme.Muted,
@@ -2112,7 +2112,7 @@ namespace CodeBuddyBookmarks
 
             // 第 3 列：类型（右对齐，靠住窗口右边）
             Rectangle tr2 = new Rectangle(e.Bounds.X, e.Bounds.Y,
-                Math.Max(10, e.Bounds.Width - 14), e.Bounds.Height);
+                Math.Max(10, e.Bounds.Width - 8), e.Bounds.Height);
             TextRenderer.DrawText(g, TypeText(b), listFont, tr2, Theme.TypeColor,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.Right);
         }
@@ -2355,11 +2355,15 @@ namespace CodeBuddyBookmarks
             applyingCols = true;
             try
             {
-                // 用户手动拖过列宽就尊重用户设置
+                // 用户手动拖过列宽就尊重用户设置，但多出来的横向空间补给路径列，避免右侧留一大块空白
                 if (userCols != null && userCols.Length == 4)
                 {
-                    for (int i = 0; i < 4; i++)
-                        list.Columns[i].Width = Math.Max(50, userCols[i]);
+                    int total = 0;
+                    for (int i = 0; i < 4; i++) total += Math.Max(50, userCols[i]);
+                    for (int i = 0; i < 4; i++) list.Columns[i].Width = Math.Max(50, userCols[i]);
+
+                    int extra = list.ClientSize.Width - total;
+                    if (extra > 0) list.Columns[2].Width += extra;
                     return;
                 }
 
@@ -2368,7 +2372,7 @@ namespace CodeBuddyBookmarks
                 int state = 92;
                 int name = Math.Max(200, Math.Min(340, (int)((w - state) * 0.32)));
                 int type = 64;
-                int path = Math.Max(160, w - state - name - type - 8);
+                int path = Math.Max(160, w - state - name - type);   // 填满，右侧不留空隙
                 list.Columns[0].Width = state;
                 list.Columns[1].Width = name;
                 list.Columns[2].Width = path;
