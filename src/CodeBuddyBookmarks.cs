@@ -1357,16 +1357,10 @@ namespace CodeBuddyBookmarks
 
             // ---------- 筛选行 ----------
             txtSearch = new TextBox();
-            txtSearch.Location = new Point(80, 11);
-            txtSearch.Width = 226;
+            txtSearch.Location = new Point(16, 11);
+            txtSearch.Width = 318;
             txtSearch.BorderStyle = BorderStyle.FixedSingle;
             txtSearch.TextChanged += delegate { RefreshRows(); };
-
-            Label lblSearch = new Label();
-            lblSearch.Text = "搜索";
-            lblSearch.AutoSize = true;
-            lblSearch.ForeColor = Theme.Muted;
-            lblSearch.Location = new Point(34, 14);
 
             chkRaise = new CheckBox();
             chkRaise.Text = "已打开的窗口置顶";
@@ -1399,7 +1393,6 @@ namespace CodeBuddyBookmarks
                 using (Pen p = new Pen(Theme.Border))
                     e.Graphics.DrawLine(p, 0, options.Height - 1, options.Width, options.Height - 1);
             };
-            options.Controls.Add(lblSearch);
             options.Controls.Add(txtSearch);
             options.Controls.Add(chkRaise);
             options.Controls.Add(lblDelay);
