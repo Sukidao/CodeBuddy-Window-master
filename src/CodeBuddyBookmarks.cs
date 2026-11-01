@@ -649,7 +649,7 @@ namespace CodeBuddyBookmarks
         public bool maximized;
         public bool dark;
         public bool darkSet;
-        public int[] colWidths;
+        public float[] colShare;  // 四列相对宽度
         public int sortMode;      // 0 手动 1 名称 2 最近打开 3 路径 4 类型 5 状态
         public bool sortAsc = true;
     }
@@ -765,7 +765,8 @@ namespace CodeBuddyBookmarks
 
         // 左右页边距：所有板块统一，避免内容贴边
         private const int PadX = 24;
-        private int[] userCols;     // 用户手动拖过的列宽
+        private float[] colShare;   // 四列相对宽度（0~1），拖动后记录；窗口缩放时按比例重算
+        private int lastLayoutWidth = -1;
         private int sortMode;       // 0 手动 1 名称 2 最近打开 3 路径 4 类型 5 状态
         private bool sortAsc = true;
         private bool applyingCols;
@@ -821,6 +822,9 @@ namespace CodeBuddyBookmarks
             LayoutColumns();
             LayoutToolbar();
 
+            // 再小就排不下了（工具条和筛选行会挤在一起），设一个下限
+            MinimumSize = new Size(940, 560);
+
             // 拖完窗口就把大小记下来，避免异常退出时丢
             ResizeEnd += delegate { if (!startHidden) SaveUiState(); };
 
@@ -853,7 +857,7 @@ namespace CodeBuddyBookmarks
 
             if (st != null)
             {
-                if (st.colWidths != null && st.colWidths.Length == 4) userCols = st.colWidths;
+                if (st.colShare != null && st.colShare.Length == 4) colShare = st.colShare;
                 sortMode = st.sortMode;
                 sortAsc = st.sortAsc;
             }
@@ -900,7 +904,7 @@ namespace CodeBuddyBookmarks
                 st.darkSet = true;
                 st.sortMode = sortMode;
                 st.sortAsc = sortAsc;
-                if (userCols != null && userCols.Length == 4) st.colWidths = userCols;
+                if (colShare != null && colShare.Length == 4) st.colShare = colShare;
 
                 JavaScriptSerializer json = new JavaScriptSerializer();
                 File.WriteAllText(uiStatePath, json.Serialize(st), new UTF8Encoding(false));
@@ -1315,13 +1319,27 @@ namespace CodeBuddyBookmarks
             list.DoubleClick += delegate { OpenChecked(true); };
             list.MouseUp += OnListMouseUp;
             list.Resize += delegate { LayoutColumns(); };
+            // 竖滚动条出现 / 消失也会改变可用宽度，这里同步重排，避免挤出横向滚动条
+            list.ClientSizeChanged += delegate
+            {
+                if (list.ClientSize.Width != lastLayoutWidth) LayoutColumns();
+            };
             list.ColumnWidthChanged += delegate
             {
                 if (applyingCols || list.Columns.Count != 4) return;
-                int[] w = new int[4];
-                for (int i = 0; i < 4; i++) w[i] = list.Columns[i].Width;
-                userCols = w;
+
+                // 记成"占比"，窗口放大缩小时按同一比例重排，永远不会把类型列挤出视野
+                int total = 0;
+                for (int i = 0; i < 4; i++) total += list.Columns[i].Width;
+                if (total <= 0) return;
+
+                float[] sh = new float[4];
+                for (int i = 0; i < 4; i++) sh[i] = (float)list.Columns[i].Width / total;
+                colShare = sh;
                 SaveUiState();
+
+                // 拖完立刻按新比例重新填满，去掉拖拽产生的横向滚动条
+                BeginInvoke(new Action(delegate { LayoutColumns(); }));
             };
 
             list.ColumnClick += OnColumnClick;
@@ -1649,7 +1667,7 @@ namespace CodeBuddyBookmarks
 
             menu.Items.Add("重置列宽", null, delegate
             {
-                userCols = null;
+                colShare = null;
                 LayoutColumns();
                 SaveUiState();
                 status.Text = "列宽已恢复自动布局";
@@ -2348,6 +2366,9 @@ namespace CodeBuddyBookmarks
             Task.Delay(800).ContinueWith(delegate { try { BeginInvoke(new Action(RefreshStatesAsync)); } catch { } });
         }
 
+        // 四列默认占比：状态 / 书签 / 路径 / 类型
+        private static readonly float[] DefaultShare = new float[] { 0.088f, 0.305f, 0.545f, 0.062f };
+
         private void LayoutColumns()
         {
             if (list.Columns.Count != 4) return;
@@ -2355,27 +2376,27 @@ namespace CodeBuddyBookmarks
             applyingCols = true;
             try
             {
-                // 用户手动拖过列宽就尊重用户设置，但多出来的横向空间补给路径列，避免右侧留一大块空白
-                if (userCols != null && userCols.Length == 4)
-                {
-                    int total = 0;
-                    for (int i = 0; i < 4; i++) total += Math.Max(50, userCols[i]);
-                    for (int i = 0; i < 4; i++) list.Columns[i].Width = Math.Max(50, userCols[i]);
-
-                    int extra = list.ClientSize.Width - total;
-                    if (extra > 0) list.Columns[2].Width += extra;
-                    return;
-                }
-
                 int w = list.ClientSize.Width;
                 if (w <= 0) return;
-                int state = 92;
-                int name = Math.Max(200, Math.Min(340, (int)((w - state) * 0.32)));
-                int type = 64;
-                int path = Math.Max(160, w - state - name - type);   // 填满，右侧不留空隙
+                lastLayoutWidth = w;
+
+                float[] sh = (colShare != null && colShare.Length == 4) ? colShare : DefaultShare;
+
+                int state = Math.Max(92, (int)Math.Round(w * sh[0]));
+                int type = Math.Max(68, (int)Math.Round(w * sh[3]));   // 至少放得下"文件夹"三个字
+                int name = Math.Max(170, (int)Math.Round(w * sh[1]));
+                int path = w - state - name - type - 1;                // 留 1px，避免触发横向滚动条
+
+                // 窗口变窄时先压书签列，再让路径列兜底，四列总和始终等于窗口宽度（不出现横向滚动条）
+                if (path < 140)
+                {
+                    name = Math.Max(140, name + path - 140);
+                    path = w - state - name - type - 1;
+                }
+
                 list.Columns[0].Width = state;
                 list.Columns[1].Width = name;
-                list.Columns[2].Width = path;
+                list.Columns[2].Width = Math.Max(80, path);
                 list.Columns[3].Width = type;
             }
             finally
