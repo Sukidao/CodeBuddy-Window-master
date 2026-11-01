@@ -2050,8 +2050,8 @@ namespace CodeBuddyBookmarks
             Bookmark b = e.Item.Tag as Bookmark;
             if (b == null) return;
 
-            Color nameColor = b.Missing ? Theme.Danger
-                : (b.OpenNow ? Theme.NameMuted : Theme.TextMain);
+            // 名称统一用正文色；是否打开由状态胶囊表达，不再靠字色深浅
+            Color nameColor = b.Missing ? Theme.Danger : Theme.TextMain;
 
             // 第 0 列：状态胶囊
             if (e.ColumnIndex == 0)
