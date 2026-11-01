@@ -378,6 +378,69 @@ namespace CodeBuddyBookmarks
         }
     }
 
+    // 圆角搜索框：外框自绘 + 内嵌无边框输入框 + 左侧放大镜
+    internal class SearchBox : Panel
+    {
+        public readonly TextBox Inner;
+        private static readonly Font iconFont = new Font("Segoe Fluent Icons", 10.5F);
+        private bool focused;
+
+        public SearchBox()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = Color.Transparent;
+
+            Inner = new TextBox();
+            Inner.BorderStyle = BorderStyle.None;
+            Inner.Font = new Font("Microsoft YaHei UI", 9.5F);
+            Inner.Location = new Point(30, 8);
+            Inner.Width = 260;
+            Inner.GotFocus += delegate { focused = true; Invalidate(); };
+            Inner.LostFocus += delegate { focused = false; Invalidate(); };
+            Controls.Add(Inner);
+
+            Resize += delegate
+            {
+                Inner.Location = new Point(30, Math.Max(2, (Height - Inner.Height) / 2));
+                Inner.Width = Math.Max(30, Width - 42);
+            };
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            Inner.Focus();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+
+            // 圆角之外的区域属于父容器
+            using (SolidBrush back = new SolidBrush(Parent != null ? Parent.BackColor : Theme.WindowBack))
+                g.FillRectangle(back, ClientRectangle);
+
+            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            SmoothingMode old = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            using (GraphicsPath p = Theme.Round(r, 8))
+            using (SolidBrush b = new SolidBrush(Theme.RowBack))
+                g.FillPath(b, p);
+
+            using (GraphicsPath p = Theme.Round(r, 8))
+            using (Pen pen = new Pen(focused ? Theme.Accent : Theme.BtnBorder, focused ? 1.6f : 1f))
+                g.DrawPath(pen, p);
+
+            g.SmoothingMode = old;
+
+            TextRenderer.DrawText(g, "\uE721", iconFont, new Rectangle(10, 0, 16, Height),
+                focused ? Theme.Accent : Theme.Muted,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPadding);
+        }
+    }
+
     // ---------------- 找 IDE 安装位置 ----------------
     internal static class IdeLocator
     {
@@ -755,6 +818,7 @@ namespace CodeBuddyBookmarks
         private CheckBox chkRaise;
         private Label lblDelay;
         private TextBox txtSearch;
+        private SearchBox searchBox;
 
         private FlatButton btnOpen, btnAll, btnAdd, btnImport, btnDel, btnUp, btnDown, btnRefresh;
         private FlatButton btnAddSel, btnAddAll;
@@ -991,9 +1055,10 @@ namespace CodeBuddyBookmarks
             foreach (Control c in new Control[] { txtSearch, numDelay, chkRaise, chkAuto })
             {
                 if (c == null) continue;
-                c.BackColor = Theme.WindowBack;
+                c.BackColor = Theme.RowBack;
                 c.ForeColor = Theme.TextMain;
             }
+            if (searchBox != null) searchBox.Invalidate();
 
             if (list != null)
             {
@@ -1403,10 +1468,11 @@ namespace CodeBuddyBookmarks
             strip.Items.Add(statusRight);
 
             // ---------- 筛选行 ----------
-            txtSearch = new TextBox();
-            txtSearch.Location = new Point(PadX, 11);
-            txtSearch.Width = 318;
-            txtSearch.BorderStyle = BorderStyle.FixedSingle;
+            // 圆角搜索框：左侧放大镜、内嵌无边框输入框、聚焦时描边变蓝
+            searchBox = new SearchBox();
+            searchBox.Location = new Point(PadX, 7);
+            searchBox.Size = new Size(318, 32);
+            txtSearch = searchBox.Inner;
             txtSearch.TextChanged += delegate { RefreshRows(); };
 
             chkRaise = new CheckBox();
@@ -1440,7 +1506,7 @@ namespace CodeBuddyBookmarks
                 using (Pen p = new Pen(Theme.Border))
                     e.Graphics.DrawLine(p, 0, options.Height - 1, options.Width, options.Height - 1);
             };
-            options.Controls.Add(txtSearch);
+            options.Controls.Add(searchBox);
             options.Controls.Add(chkRaise);
             options.Controls.Add(lblDelay);
             options.Controls.Add(numDelay);
