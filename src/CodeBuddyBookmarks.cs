@@ -62,43 +62,42 @@ namespace CodeBuddyBookmarks
         {
             IsDark = dark;
 
-            // “纸”的基调：白底、墨字、极浅的分隔线，靠余白而不是色块划分层次
-            HeaderTop = dark ? Color.FromArgb(20, 21, 23) : Color.FromArgb(255, 255, 255);
-            HeaderBottom = HeaderTop;
-            HeaderText = dark ? Color.FromArgb(138, 141, 146) : Color.FromArgb(150, 153, 158);
+            HeaderTop = dark ? Color.FromArgb(20, 24, 34) : Color.FromArgb(27, 33, 48);
+            HeaderBottom = dark ? Color.FromArgb(30, 36, 50) : Color.FromArgb(38, 47, 69);
+            HeaderText = dark ? Color.FromArgb(150, 162, 186) : Color.FromArgb(158, 169, 194);
 
-            Card = dark ? Color.FromArgb(23, 24, 26) : Color.FromArgb(251, 251, 251);
-            Border = dark ? Color.FromArgb(44, 46, 50) : Color.FromArgb(236, 236, 236);
-            Muted = dark ? Color.FromArgb(146, 149, 154) : Color.FromArgb(147, 150, 155);
-            TextMain = dark ? Color.FromArgb(233, 234, 236) : Color.FromArgb(27, 28, 30);
+            Card = dark ? Color.FromArgb(38, 42, 52) : Color.FromArgb(247, 248, 250);
+            Border = dark ? Color.FromArgb(62, 68, 82) : Color.FromArgb(226, 230, 238);
+            Muted = dark ? Color.FromArgb(150, 158, 172) : Color.FromArgb(123, 131, 148);
+            TextMain = dark ? Color.FromArgb(232, 236, 244) : Color.FromArgb(34, 37, 46);
 
-            WindowBack = dark ? Color.FromArgb(20, 21, 23) : Color.White;
-            HeaderBack = WindowBack;
-            RowBack = WindowBack;
-            RowHover = dark ? Color.FromArgb(28, 29, 32) : Color.FromArgb(247, 247, 247);
-            RowSelected = dark ? Color.FromArgb(35, 37, 40) : Color.FromArgb(242, 242, 242);
-            RowLineColor = dark ? Color.FromArgb(31, 33, 36) : Color.FromArgb(245, 245, 245);
-            PathColor = dark ? Color.FromArgb(138, 141, 146) : Color.FromArgb(160, 163, 168);
-            TypeColor = dark ? Color.FromArgb(116, 119, 124) : Color.FromArgb(176, 179, 183);
-            NameMuted = dark ? Color.FromArgb(124, 127, 132) : Color.FromArgb(166, 169, 173);
-            EmptyTitle = dark ? Color.FromArgb(150, 153, 158) : Color.FromArgb(191, 194, 198);
-            EmptyHint = dark ? Color.FromArgb(120, 123, 128) : Color.FromArgb(200, 203, 207);
+            WindowBack = dark ? Color.FromArgb(30, 34, 43) : Color.White;
+            HeaderBack = dark ? Color.FromArgb(36, 40, 50) : Color.FromArgb(250, 251, 253);
+            RowBack = dark ? Color.FromArgb(30, 34, 43) : Color.White;
+            RowHover = dark ? Color.FromArgb(40, 45, 56) : Color.FromArgb(249, 251, 254);
+            RowSelected = dark ? Color.FromArgb(44, 62, 96) : Color.FromArgb(235, 242, 255);
+            RowLineColor = dark ? Color.FromArgb(44, 48, 58) : Color.FromArgb(242, 244, 248);
+            PathColor = dark ? Color.FromArgb(152, 160, 174) : Color.FromArgb(106, 114, 130);
+            TypeColor = dark ? Color.FromArgb(140, 148, 162) : Color.FromArgb(134, 141, 156);
+            NameMuted = dark ? Color.FromArgb(148, 156, 170) : Color.FromArgb(160, 166, 178);
+            EmptyTitle = dark ? Color.FromArgb(170, 178, 192) : Color.FromArgb(150, 157, 172);
+            EmptyHint = dark ? Color.FromArgb(130, 138, 152) : Color.FromArgb(178, 184, 196);
 
-            BtnHover = dark ? Color.FromArgb(29, 31, 34) : Color.FromArgb(246, 246, 246);
-            BtnPress = dark ? Color.FromArgb(35, 37, 40) : Color.FromArgb(239, 239, 239);
-            BtnBorder = dark ? Color.FromArgb(51, 54, 59) : Color.FromArgb(228, 228, 228);
+            BtnHover = dark ? Color.FromArgb(48, 53, 66) : Color.FromArgb(243, 246, 252);
+            BtnPress = dark ? Color.FromArgb(40, 45, 57) : Color.FromArgb(232, 236, 244);
+            BtnBorder = dark ? Color.FromArgb(92, 100, 118) : Color.FromArgb(198, 208, 228);
 
             ChipRedBack = dark ? Color.FromArgb(64, 34, 36) : Color.FromArgb(253, 236, 236);
             ChipGreenBack = dark ? Color.FromArgb(28, 52, 40) : Color.FromArgb(232, 247, 238);
             ChipGrayBack = dark ? Color.FromArgb(46, 50, 60) : Color.FromArgb(242, 244, 248);
 
-            MenuBack = dark ? Color.FromArgb(27, 29, 32) : Color.White;
-            MenuHover = dark ? Color.FromArgb(38, 40, 44) : Color.FromArgb(244, 244, 244);
+            MenuBack = dark ? Color.FromArgb(43, 47, 57) : Color.FromArgb(252, 252, 253);
+            MenuHover = dark ? Color.FromArgb(56, 61, 74) : Color.FromArgb(240, 243, 248);
 
-            Accent = dark ? Color.FromArgb(233, 234, 236) : Color.FromArgb(27, 28, 30);
-            AccentHover = dark ? Color.FromArgb(245, 246, 248) : Color.FromArgb(52, 53, 56);
-            AccentPress = dark ? Color.FromArgb(210, 212, 215) : Color.Black;
-            AccentText = dark ? Color.FromArgb(20, 21, 23) : Color.White;
+            Accent = Color.FromArgb(47, 107, 255);
+            AccentHover = Color.FromArgb(78, 130, 255);
+            AccentPress = Color.FromArgb(35, 88, 214);
+            AccentText = Color.White;
 
             Swap(ref BgWhite, new SolidBrush(RowBack));
             Swap(ref BgHover, new SolidBrush(RowHover));
@@ -348,7 +347,7 @@ namespace CodeBuddyBookmarks
                 fill = pressed ? Theme.BtnPress
                      : (hovered ? Theme.BtnHover : Theme.RowBack);
 
-            using (GraphicsPath path = Theme.Round(fillRect, 2))
+            using (GraphicsPath path = Theme.Round(fillRect, 6))
             using (SolidBrush b = new SolidBrush(fill))
             {
                 g.FillPath(b, path);
@@ -359,7 +358,7 @@ namespace CodeBuddyBookmarks
                 SmoothingMode old = g.SmoothingMode;
                 g.SmoothingMode = SmoothingMode.None;
                 Rectangle borderRect = new Rectangle(0, 0, Width - 1, Height - 1);
-                using (GraphicsPath path = Theme.Round(borderRect, 2))
+                using (GraphicsPath path = Theme.Round(borderRect, 6))
                 using (Pen p = new Pen(Theme.BtnBorder))
                 {
                     g.DrawPath(p, path);
@@ -767,7 +766,7 @@ namespace CodeBuddyBookmarks
 
         private int hoverIndex = -1;
         private readonly Font listFont = new Font("Microsoft YaHei UI", 9.5F);
-        private readonly Font headerFont = new Font("Microsoft YaHei UI", 8.25F);
+        private readonly Font headerFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
         private readonly Font chipFont = new Font("Microsoft YaHei UI", 8.75F);
 
         private CheckBox chkAuto;
@@ -1465,17 +1464,17 @@ namespace CodeBuddyBookmarks
             // ---------- 顶部标题 ----------
             Label title = new Label();
             title.Text = "CodeBuddy 窗口书签";
-            title.ForeColor = Theme.TextMain;
-            title.Font = new Font("Microsoft YaHei UI", 19F, FontStyle.Bold);
+            title.ForeColor = Color.White;
+            title.Font = new Font("Microsoft YaHei UI", 17F, FontStyle.Bold);
             title.AutoSize = true;
             title.BackColor = Color.Transparent;
-            title.Location = new Point(32, 18);
+            title.Location = new Point(32, 20);
 
             lblSummary = new Label();
             lblSummary.AutoSize = true;
-            lblSummary.ForeColor = Theme.Muted;
+            lblSummary.ForeColor = Theme.HeaderText;
             lblSummary.BackColor = Color.Transparent;
-            lblSummary.Location = new Point(34, 62);
+            lblSummary.Location = new Point(34, 58);
             lblSummary.Text = "";
 
             lblHint = new Label();
@@ -1846,11 +1845,15 @@ namespace CodeBuddyBookmarks
         private void OnHeaderPaint(object sender, PaintEventArgs e)
         {
             Rectangle r = new Rectangle(0, 0, header.Width, header.Height);
-            e.Graphics.FillRectangle(Theme.WindowBrush, r);
-
-            // 底下只留一条发丝线，不用色块划区
-            using (Pen p = new Pen(Theme.Border))
-                e.Graphics.DrawLine(p, 0, r.Height - 1, r.Width, r.Height - 1);
+            using (LinearGradientBrush brush = new LinearGradientBrush(
+                new Point(0, 0), new Point(r.Width, r.Height),
+                Theme.HeaderTop, Theme.HeaderBottom))
+            {
+                e.Graphics.FillRectangle(brush, r);
+            }
+            // 顶部一条细高光
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(18, 255, 255, 255)))
+                e.Graphics.FillRectangle(b, new Rectangle(0, 0, r.Width, 1));
         }
 
         // ---------- 列表自绘 ----------
@@ -1965,30 +1968,25 @@ namespace CodeBuddyBookmarks
 
         private static readonly Font s_measureFont = new Font("Microsoft YaHei UI", 9.5F);
 
-        // 状态：一个小圆点 + 字。实心 = 开着，空心 = 没开，红色 = 失效
-        private void DrawChip(Graphics g, Rectangle area, string text, Color dot, bool hollow, Color textColor)
+        private void DrawChip(Graphics g, Rectangle area, string text, Color fg, Color back)
         {
-            int cy = area.Y + area.Height / 2;
-            int dx = area.X + 14;
-            int d = 6;
+            int h = 20;
+            int w = Math.Min(78, area.Width - 10);   // 固定宽度，几行对齐更整齐
+            if (w < 40) return;
+            Rectangle chip = new Rectangle(area.X + 8, area.Y + (area.Height - h) / 2, w, h);
 
             SmoothingMode old = g.SmoothingMode;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            if (hollow)
-            {
-                using (Pen p = new Pen(dot, 1.2f))
-                    g.DrawEllipse(p, dx, cy - d / 2, d, d);
-            }
-            else
-            {
-                using (SolidBrush b = new SolidBrush(dot))
-                    g.FillEllipse(b, dx, cy - d / 2, d, d);
-            }
+            using (GraphicsPath p = Theme.Round(chip, h / 2))
+            using (SolidBrush b = new SolidBrush(back))
+                g.FillPath(b, p);
             g.SmoothingMode = old;
 
-            Rectangle tr = new Rectangle(dx + d + 8, area.Y,
-                Math.Max(20, area.Right - dx - d - 12), area.Height);
-            TextRenderer.DrawText(g, text, chipFont, tr, textColor,
+            using (SolidBrush dot = new SolidBrush(fg))
+                g.FillEllipse(dot, chip.X + 8, chip.Y + h / 2 - 2, 5, 5);
+
+            Rectangle tr = new Rectangle(chip.X + 17, chip.Y, chip.Width - 24, chip.Height);
+            TextRenderer.DrawText(g, text, chipFont, tr, fg,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
         }
 
@@ -2061,12 +2059,12 @@ namespace CodeBuddyBookmarks
             Color nameColor = b.Missing ? Theme.Danger
                 : (b.OpenNow ? Theme.NameMuted : Theme.TextMain);
 
-            // 第 0 列：状态（墨点 + 字）
+            // 第 0 列：状态胶囊
             if (e.ColumnIndex == 0)
             {
-                if (b.Missing) DrawChip(g, e.Bounds, "路径失效", Theme.Danger, false, Theme.Danger);
-                else if (b.OpenNow) DrawChip(g, e.Bounds, "已打开", Theme.TextMain, false, Theme.TextMain);
-                else DrawChip(g, e.Bounds, "未打开", Theme.TypeColor, true, Theme.Muted);
+                if (b.Missing) DrawChip(g, e.Bounds, "路径失效", Color.FromArgb(190, 58, 58), Theme.ChipRedBack);
+                else if (b.OpenNow) DrawChip(g, e.Bounds, "已打开", Color.FromArgb(28, 138, 78), Theme.ChipGreenBack);
+                else DrawChip(g, e.Bounds, "未打开", Theme.IsDark ? Color.FromArgb(170, 178, 192) : Color.FromArgb(110, 118, 132), Theme.ChipGrayBack);
                 return;
             }
 
