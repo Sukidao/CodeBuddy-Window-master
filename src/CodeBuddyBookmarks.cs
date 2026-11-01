@@ -756,6 +756,9 @@ namespace CodeBuddyBookmarks
 
         private bool busy = false;
         private Icon appIcon;
+
+        // 左右页边距：所有板块统一，避免内容贴边
+        private const int PadX = 24;
         private int[] userCols;     // 用户手动拖过的列宽
         private int sortMode;       // 0 手动 1 名称 2 最近打开 3 路径 4 类型 5 状态
         private bool sortAsc = true;
@@ -1352,13 +1355,13 @@ namespace CodeBuddyBookmarks
             StatusStrip strip = new StatusStrip();
             strip.SizingGrip = false;
             strip.BackColor = Theme.Card;
-            strip.Padding = new Padding(16, 0, 16, 0);
+            strip.Padding = new Padding(PadX, 0, PadX, 0);
             strip.Items.Add(status);
             strip.Items.Add(statusRight);
 
             // ---------- 筛选行 ----------
             txtSearch = new TextBox();
-            txtSearch.Location = new Point(16, 11);
+            txtSearch.Location = new Point(PadX, 11);
             txtSearch.Width = 318;
             txtSearch.BorderStyle = BorderStyle.FixedSingle;
             txtSearch.TextChanged += delegate { RefreshRows(); };
@@ -1493,7 +1496,7 @@ namespace CodeBuddyBookmarks
             // 列表外包一层，给表头留出上边距
             listWrap = new Panel();
             listWrap.Dock = DockStyle.Fill;
-            listWrap.Padding = new Padding(0, 4, 0, 0);
+            listWrap.Padding = new Padding(PadX, 4, PadX, 0);
             listWrap.BackColor = Theme.WindowBack;
             listWrap.Controls.Add(list);
 
@@ -1605,7 +1608,7 @@ namespace CodeBuddyBookmarks
             panelExtra.Resize += delegate { LayoutExtra(); };
             extraWrap = new Panel();
             extraWrap.Dock = DockStyle.Fill;
-            extraWrap.Padding = new Padding(16, 42, 16, 10);
+            extraWrap.Padding = new Padding(PadX, 42, PadX, 10);
             extraWrap.BackColor = Theme.WindowBack;
             extraWrap.Controls.Add(listExtra);
             panelExtra.Controls.Add(extraWrap);
@@ -1798,13 +1801,13 @@ namespace CodeBuddyBookmarks
             if (toolbar == null) return;
             int cy = toolbar.Height / 2;
 
-            int x = 32;
+            int x = PadX;
             Place(btnOpen, x, cy); x += btnOpen.Width + 12;
             Place(btnAll, x, cy); x += btnAll.Width + 28;
             Place(btnAdd, x, cy); x += btnAdd.Width + 10;
             Place(btnImport, x, cy);
 
-            int rx = toolbar.Width - 32;
+            int rx = toolbar.Width - PadX;
             rx -= btnRefresh.Width; Place(btnRefresh, rx, cy); rx -= 8;
             rx -= btnDel.Width; Place(btnDel, rx, cy); rx -= 14;
             rx -= btnDown.Width; Place(btnDown, rx, cy); rx -= 6;
@@ -2151,7 +2154,7 @@ namespace CodeBuddyBookmarks
             if (options == null || chkRaise == null) return;
 
             int x = (list != null && list.Columns.Count >= 2)
-                ? list.Columns[0].Width + list.Columns[1].Width + 8
+                ? PadX + list.Columns[0].Width + list.Columns[1].Width + 8
                 : 346;
 
             chkRaise.Location = new Point(x, 13);
