@@ -1039,6 +1039,7 @@ namespace CodeBuddyBookmarks
                 SaveUiState();
             };
             trayMenu.Items.Add(darkItem);
+            trayMenu.Items.Add(BuildSortMenu());
             trayMenu.Items.Add(new ToolStripSeparator());
 
             // 同步一次"已打开"状态
@@ -1642,17 +1643,7 @@ namespace CodeBuddyBookmarks
             menu.Items.Add("在资源管理器中打开", null, delegate { RevealSelected(); });
             menu.Items.Add(new ToolStripSeparator());
 
-            ToolStripMenuItem sortMenu = new ToolStripMenuItem("排序");
-            ToolStripMenuItem sortManual = new ToolStripMenuItem("手动（拖动顺序）", null, delegate { SetSortMode(0); });
-            ToolStripMenuItem sortName = new ToolStripMenuItem("按名称", null, delegate { SetSortMode(1); });
-            ToolStripMenuItem sortRecent = new ToolStripMenuItem("按最近打开", null, delegate { SetSortMode(2); });
-            sortManual.Checked = sortMode == 0;
-            sortName.Checked = sortMode == 1;
-            sortRecent.Checked = sortMode == 2;
-            sortMenu.DropDownItems.Add(sortManual);
-            sortMenu.DropDownItems.Add(sortName);
-            sortMenu.DropDownItems.Add(sortRecent);
-            menu.Items.Add(sortMenu);
+            menu.Items.Add(BuildSortMenu());
 
             menu.Items.Add("重置列宽", null, delegate
             {
@@ -1724,7 +1715,79 @@ namespace CodeBuddyBookmarks
             sortMode = mode;
             SaveUiState();
             RefreshRows();
-            status.Text = mode == 0 ? "排序：手动" : (mode == 1 ? "排序：按名称" : "排序：按最近打开");
+            status.Text = "排序：" + SortLabel(mode) + (mode == 0 ? "" : (sortAsc ? " ↑" : " ↓"));
+        }
+
+        private static string SortLabel(int mode)
+        {
+            switch (mode)
+            {
+                case 1: return "按名称";
+                case 2: return "按最近打开";
+                case 3: return "按路径";
+                case 4: return "按类型";
+                case 5: return "按状态";
+                default: return "手动排列";
+            }
+        }
+
+        // 排序子菜单：托盘和列表右键共用，打开时同步勾选状态
+        private ToolStripMenuItem BuildSortMenu()
+        {
+            ToolStripMenuItem root = new ToolStripMenuItem("排序");
+
+            int[] modes = new int[] { 0, 1, 2, 3, 4, 5 };
+            foreach (int m in modes)
+            {
+                int mode = m;
+                ToolStripMenuItem it = new ToolStripMenuItem(SortLabel(mode));
+                it.Tag = mode;
+                it.Checked = sortMode == mode;
+                it.Click += delegate { SetSortMode(mode); };
+                root.DropDownItems.Add(it);
+            }
+
+            ToolStripSeparator sep = new ToolStripSeparator();
+            ToolStripMenuItem dir = new ToolStripMenuItem();
+            dir.Tag = "dir";
+            dir.Click += delegate
+            {
+                if (sortMode == 0) { status.Text = "手动排列没有升降序"; return; }
+                sortAsc = !sortAsc;
+                SaveUiState();
+                RefreshRows();
+                status.Text = "排序：" + SortLabel(sortMode) + (sortAsc ? " ↑" : " ↓");
+            };
+            root.DropDownItems.Add(sep);
+            root.DropDownItems.Add(dir);
+
+            root.DropDownOpening += delegate { SyncSortMenu(root); };
+            SyncSortMenu(root);
+            return root;
+        }
+
+        private void SyncSortMenu(ToolStripMenuItem root)
+        {
+            foreach (ToolStripItem it in root.DropDownItems)
+            {
+                ToolStripMenuItem mi = it as ToolStripMenuItem;
+                if (mi == null) continue;
+
+                if (mi.Tag is int)
+                {
+                    int mode = (int)mi.Tag;
+                    mi.Checked = sortMode == mode;
+                    continue;
+                }
+
+                if ("dir".Equals(mi.Tag))
+                {
+                    bool active = sortMode != 0;
+                    mi.Enabled = active;
+                    mi.Text = !active ? "（手动排列无升降序）"
+                        : (sortAsc ? "改为降序 ↓" : "改为升序 ↑");
+                }
+            }
         }
 
         private FlatButton MakeButton(string text, int width, bool primary)
