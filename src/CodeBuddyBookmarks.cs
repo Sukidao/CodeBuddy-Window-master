@@ -730,6 +730,11 @@ namespace CodeBuddyBookmarks
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
+        private const int SB_HORZ = 0;
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+
         private readonly string workDir;
         private readonly string storePath;
         private readonly string snapshotPath;
@@ -821,6 +826,10 @@ namespace CodeBuddyBookmarks
             catch { }
             if (appIcon != null) Icon = appIcon;
 
+            optionsTimer = new Timer();
+            optionsTimer.Interval = 200;
+            optionsTimer.Tick += delegate { optionsTimer.Stop(); LayoutOptions(); };
+
             BuildUi();
             ApplyUiState();
             LayoutColumns();
@@ -828,7 +837,7 @@ namespace CodeBuddyBookmarks
             LayoutToolbar();
 
             // 再小就排不下了（工具条和筛选行会挤在一起），设一个下限
-            MinimumSize = new Size(940, 560);
+            MinimumSize = new Size(1000, 560);
 
             // 拖完窗口：对齐筛选行，并把大小记下来
             ResizeEnd += delegate
@@ -2387,6 +2396,7 @@ namespace CodeBuddyBookmarks
         private static readonly float[] DefaultShare = new float[] { 0.088f, 0.305f, 0.545f, 0.062f };
 
         private bool inLayout;
+        private Timer optionsTimer;
 
         // 列宽同步跟随窗口（不要用定时器延后，否则会出现"先按旧宽度画一帧、再跳一下"的顿感）
         private void QueueLayout()
@@ -2395,6 +2405,13 @@ namespace CodeBuddyBookmarks
             inLayout = true;
             try { LayoutColumns(); }
             finally { inLayout = false; }
+
+            // 筛选行等 200ms 再对齐：拖动过程中不跟着抖，停下来立刻归位
+            if (optionsTimer != null)
+            {
+                optionsTimer.Stop();
+                optionsTimer.Start();
+            }
         }
 
         private void LayoutColumns()
@@ -2432,6 +2449,9 @@ namespace CodeBuddyBookmarks
                     list.Columns[3].Width = type;
                 }
                 finally { list.EndUpdate(); }
+
+                // 四列始终铺满，不需要横向滚动条；拖动窗口时会闪一下，这里直接禁掉
+                try { ShowScrollBar(list.Handle, SB_HORZ, false); } catch { }
             }
             finally
             {
